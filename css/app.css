@@ -1,7 +1,7 @@
 :root {
   --background: #eef2ff;
   --background-gradient: radial-gradient(circle at top right, #dbeafe 0%, #eef2ff 45%, #f8fafc 100%);
-  --card-background: rgba(255, 255, 255, 0.92);
+  --card-background: rgba(255, 255, 255, 0.94);
   --card-border: #dbe3f4;
   --text-main: #0f172a;
   --text-muted: #475569;
@@ -20,7 +20,7 @@
 html[data-theme='dark'] {
   --background: #0b1220;
   --background-gradient: radial-gradient(circle at top right, #172554 0%, #0b1220 50%, #020617 100%);
-  --card-background: rgba(15, 23, 42, 0.86);
+  --card-background: rgba(15, 23, 42, 0.9);
   --card-border: #243041;
   --text-main: #e2e8f0;
   --text-muted: #94a3b8;
@@ -51,16 +51,16 @@ body {
 .page {
   max-width: 1250px;
   margin: 0 auto;
-  padding: 28px;
+  padding: 24px;
   display: grid;
-  gap: 18px;
+  gap: 16px;
 }
 
 .card {
   background: var(--card-background);
   border: 1px solid var(--card-border);
   border-radius: 16px;
-  padding: 20px;
+  padding: 18px;
   box-shadow: var(--shadow);
   backdrop-filter: blur(8px);
 }
@@ -186,18 +186,85 @@ th {
   background: var(--table-header);
 }
 
-@media (max-width: 800px) {
+@media (max-width: 900px) {
   .page {
     padding: 14px;
   }
 
+  .card {
+    padding: 14px;
+    border-radius: 14px;
+  }
+
   .card-header {
     flex-direction: column;
+    align-items: stretch;
   }
 
   .field,
   .field.compact {
     min-width: 100%;
     flex: 1;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .row button {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 700px) {
+  .table-wrap {
+    overflow: visible;
+  }
+
+  table,
+  thead,
+  tbody,
+  tr,
+  td,
+  th {
+    display: block;
+    width: 100%;
+  }
+
+  thead {
+    display: none;
+  }
+
+  tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  tr {
+    border: 1px solid var(--table-border);
+    border-radius: 12px;
+    background: var(--field-background);
+    padding: 8px;
+  }
+
+  td {
+    border: 0;
+    border-bottom: 1px solid var(--table-border);
+    padding: 8px 6px;
+    display: grid;
+    gap: 4px;
+    word-break: break-word;
+  }
+
+  td:last-child {
+    border-bottom: 0;
+  }
+
+  td::before {
+    content: attr(data-label);
+    font-weight: 700;
+    color: var(--text-muted);
   }
 }

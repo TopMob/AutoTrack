@@ -69,6 +69,8 @@ const elements = {
   journalStatus: document.getElementById('journalStatus')
 }
 
+const journalColumnTitles = ['ФИО', 'Дата поездки', 'Номер машины', 'Пробег', 'Текст поездки', 'Дата создания', 'Суточный пробег', 'Одометр на конец дня']
+
 let activeUser = null
 let allTripRecords = []
 let responsibleEmailAddress = fallbackResponsibleEmailAddress
@@ -126,11 +128,7 @@ function setTheme(themeName) {
 
 function initializeTheme() {
   const storedTheme = localStorage.getItem(themeStorageKey)
-  if (storedTheme === 'dark' || storedTheme === 'light') {
-    setTheme(storedTheme)
-    return
-  }
-  setTheme('light')
+  setTheme(storedTheme === 'dark' ? 'dark' : 'light')
 }
 
 function toggleTheme() {
@@ -149,6 +147,7 @@ async function loadResponsibleEmailAddress() {
     elements.managerEmailInput.value = responsibleEmailAddress
     return
   }
+
   const managerSettingsData = managerSettingsSnapshot.data()
   const storedResponsibleEmail = normalizeEmail(managerSettingsData.responsibleEmail)
   responsibleEmailAddress = storedResponsibleEmail || fallbackResponsibleEmailAddress
@@ -220,7 +219,10 @@ function buildTripMetricsByRecordId(records) {
   const metricsByRecordId = new Map()
 
   recordsByDateAndVehicle.forEach((groupItems) => {
-    const odometerValues = groupItems.map((record) => Number(record.odometerValue)).filter((value) => Number.isFinite(value))
+    const odometerValues = groupItems
+      .map((record) => Number(record.odometerValue))
+      .filter((value) => Number.isFinite(value))
+
     const endOfDayOdometer = odometerValues.length ? Math.max(...odometerValues) : 0
     const startOfDayOdometer = odometerValues.length ? Math.min(...odometerValues) : 0
     const dailyMileage = Math.max(endOfDayOdometer - startOfDayOdometer, 0)
@@ -238,8 +240,7 @@ function buildTripMetricsByRecordId(records) {
 
 function filterRecordsByDateRange(records, fromDate, toDate) {
   return records.filter((record) => {
-    const hasTripDate = Boolean(record.tripDate)
-    if (!hasTripDate) {
+    if (!record.tripDate) {
       return false
     }
     const passesFromBoundary = fromDate ? record.tripDate >= fromDate : true
@@ -306,9 +307,10 @@ function renderJournal(records) {
     ]
 
     const rowElement = document.createElement('tr')
-    rowValues.forEach((value) => {
+    rowValues.forEach((value, index) => {
       const cellElement = document.createElement('td')
       cellElement.textContent = value
+      cellElement.setAttribute('data-label', journalColumnTitles[index])
       rowElement.append(cellElement)
     })
 
@@ -328,7 +330,6 @@ function applyFiltersAndRenderJournal() {
 
 function createCsvContent(records) {
   const metricsByRecordId = buildTripMetricsByRecordId(records)
-  const headerColumns = ['ФИО', 'Дата поездки', 'Номер машины', 'Пробег', 'Текст поездки', 'Дата создания', 'Суточный пробег', 'Одометр на конец дня']
   const rows = records.map((record) => {
     const metrics = metricsByRecordId.get(record.id) || { dailyMileage: 0, endOfDayOdometer: 0 }
     return [
@@ -342,21 +343,42 @@ function createCsvContent(records) {
       String(metrics.endOfDayOdometer)
     ]
   })
-  const csvRows = [headerColumns, ...rows].map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(';'))
+
+  const csvRows = [journalColumnTitles, ...rows].map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(';'))
   return `\uFEFF${csvRows.join('\n')}`
 }
 
-function downloadCsvFile(fileName, records) {
-  const csvContent = createCsvContent(records)
-  const csvBlob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-  const objectUrl = URL.createObjectURL(csvBlob)
+function buildExportFileName(prefixText) {
+  const nowDate = new Date()
+  const datePart = nowDate.toISOString().slice(0, 10)
+  const timePart = nowDate.toTimeString().slice(0, 8).replaceAll(':', '-')
+  return `${prefixText}-${datePart}-${timePart}.csv`
+}
+
+function triggerFileDownload(fileName, fileContent, mimeType) {
+  const fileBlob = new Blob([fileContent], { type: mimeType })
+  const objectUrl = URL.createObjectURL(fileBlob)
   const downloadLink = document.createElement('a')
   downloadLink.href = objectUrl
   downloadLink.download = fileName
   document.body.append(downloadLink)
   downloadLink.click()
   downloadLink.remove()
-  URL.revokeObjectURL(objectUrl)
+  setTimeout(() => {
+    URL.revokeObjectURL(objectUrl)
+  }, 1000)
+}
+
+function exportRecords(records, prefixText) {
+  if (!records.length) {
+    elements.journalStatus.textContent = 'Нет данных для скачивания'
+    return
+  }
+
+  const csvContent = createCsvContent(records)
+  const fileName = buildExportFileName(prefixText)
+  triggerFileDownload(fileName, csvContent, 'text/csv;charset=utf-8;')
+  elements.journalStatus.textContent = `Скачано записей: ${records.length}`
 }
 
 function updateVisibilityForUser(user) {
@@ -487,7 +509,7 @@ function exportFilteredRecords() {
   if (!canAccessJournal(activeUser)) {
     return
   }
-  downloadCsvFile('autotrack-journal-filtered.csv', getCurrentFilteredAndSortedRecords())
+  exportRecords(getCurrentFilteredAndSortedRecords(), 'autotrack-journal-filtered')
 }
 
 function exportAllRecords() {
@@ -495,7 +517,7 @@ function exportAllRecords() {
     return
   }
   const sortedRecords = sortRecords(allTripRecords, elements.sortOrderInput.value)
-  downloadCsvFile('autotrack-journal-all.csv', sortedRecords)
+  exportRecords(sortedRecords, 'autotrack-journal-all')
 }
 
 function resetFilters() {
