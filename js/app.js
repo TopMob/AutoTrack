@@ -32,7 +32,6 @@ const fallbackResponsibleEmailAddress = 'responsible@autotrack.local'
 const vehicleNumbers = ['A001AA', 'A002AA', 'A003AA', 'A004AA', 'A005AA']
 const managerSettingsPath = ['systemSettings', 'responsibleAssignment']
 const themeStorageKey = 'autotrack_theme'
-const journalColumnTitles = ['ФИО', 'Дата поездки', 'Номер машины', 'Одометр', 'Суточный пробег', 'Одометр на конец дня', 'Текст поездки', 'Дата создания']
 
 const application = initializeApp(firebaseConfiguration)
 const authentication = getAuth(application)
@@ -56,7 +55,6 @@ const elements = {
   tripDateInput: document.getElementById('tripDateInput'),
   vehicleNumberInput: document.getElementById('vehicleNumberInput'),
   odometerInput: document.getElementById('odometerInput'),
-  dailyMileageInput: document.getElementById('dailyMileageInput'),
   tripDescriptionInput: document.getElementById('tripDescriptionInput'),
   tripFormStatus: document.getElementById('tripFormStatus'),
   journalCard: document.getElementById('journalCard'),
@@ -71,10 +69,11 @@ const elements = {
   journalStatus: document.getElementById('journalStatus')
 }
 
+const journalColumnTitles = ['ФИО', 'Дата поездки', 'Номер машины', 'Пробег', 'Текст поездки', 'Дата создания', 'Суточный пробег', 'Одометр на конец дня']
+
 let activeUser = null
 let allTripRecords = []
 let responsibleEmailAddress = fallbackResponsibleEmailAddress
-let stopTripRecordsSubscription = null
 
 function normalizeEmail(emailAddress) {
   return String(emailAddress || '').trim().toLowerCase()
@@ -128,7 +127,8 @@ function setTheme(themeName) {
 }
 
 function initializeTheme() {
-  setTheme(localStorage.getItem(themeStorageKey) === 'dark' ? 'dark' : 'light')
+  const storedTheme = localStorage.getItem(themeStorageKey)
+  setTheme(storedTheme === 'dark' ? 'dark' : 'light')
 }
 
 function toggleTheme() {
@@ -141,22 +141,17 @@ function getManagerSettingsReference() {
 }
 
 async function loadResponsibleEmailAddress() {
-  try {
-    const managerSettingsSnapshot = await getDoc(getManagerSettingsReference())
-    if (!managerSettingsSnapshot.exists()) {
-      responsibleEmailAddress = fallbackResponsibleEmailAddress
-      elements.managerEmailInput.value = responsibleEmailAddress
-      return
-    }
-
-    const managerSettingsData = managerSettingsSnapshot.data()
-    const storedResponsibleEmail = normalizeEmail(managerSettingsData.responsibleEmail)
-    responsibleEmailAddress = storedResponsibleEmail || fallbackResponsibleEmailAddress
-    elements.managerEmailInput.value = responsibleEmailAddress
-  } catch {
+  const managerSettingsSnapshot = await getDoc(getManagerSettingsReference())
+  if (!managerSettingsSnapshot.exists()) {
     responsibleEmailAddress = fallbackResponsibleEmailAddress
     elements.managerEmailInput.value = responsibleEmailAddress
+    return
   }
+
+  const managerSettingsData = managerSettingsSnapshot.data()
+  const storedResponsibleEmail = normalizeEmail(managerSettingsData.responsibleEmail)
+  responsibleEmailAddress = storedResponsibleEmail || fallbackResponsibleEmailAddress
+  elements.managerEmailInput.value = responsibleEmailAddress
 }
 
 async function saveResponsibleEmailAddress() {
@@ -180,7 +175,7 @@ async function saveResponsibleEmailAddress() {
 
   responsibleEmailAddress = responsibleEmailCandidate
   elements.managerStatus.textContent = `Ответственный сохранен: ${responsibleEmailAddress}`
-  updateJournalSubscriptionForUser()
+  updateVisibilityForUser(activeUser)
   applyFiltersAndRenderJournal()
 }
 
@@ -204,7 +199,6 @@ function normalizeTripRecord(documentSnapshot) {
     tripDate: convertDateValueToIsoDateString(rawRecord.tripDate),
     vehicleNumber: String(rawRecord.vehicleNumber || ''),
     odometerValue: Number(rawRecord.odometerValue || 0),
-    dailyMileageValue: Number(rawRecord.dailyMileageValue || 0),
     tripDescription: String(rawRecord.tripDescription || ''),
     createdAt: rawRecord.createdAt,
     createdByUserId: String(rawRecord.createdByUserId || ''),
@@ -212,7 +206,7 @@ function normalizeTripRecord(documentSnapshot) {
   }
 }
 
-function buildFallbackMetricsByRecordId(records) {
+function buildTripMetricsByRecordId(records) {
   const recordsByDateAndVehicle = new Map()
 
   records.forEach((record) => {
@@ -222,23 +216,26 @@ function buildFallbackMetricsByRecordId(records) {
     recordsByDateAndVehicle.set(groupKey, groupItems)
   })
 
-  const fallbackMetricsByRecordId = new Map()
+  const metricsByRecordId = new Map()
 
   recordsByDateAndVehicle.forEach((groupItems) => {
-    const odometerValues = groupItems.map((record) => Number(record.odometerValue)).filter((value) => Number.isFinite(value))
-    const dayStartOdometer = odometerValues.length ? Math.min(...odometerValues) : 0
-    const dayEndOdometer = odometerValues.length ? Math.max(...odometerValues) : 0
-    const fallbackDailyMileage = Math.max(dayEndOdometer - dayStartOdometer, 0)
+    const odometerValues = groupItems
+      .map((record) => Number(record.odometerValue))
+      .filter((value) => Number.isFinite(value))
+
+    const endOfDayOdometer = odometerValues.length ? Math.max(...odometerValues) : 0
+    const startOfDayOdometer = odometerValues.length ? Math.min(...odometerValues) : 0
+    const dailyMileage = Math.max(endOfDayOdometer - startOfDayOdometer, 0)
 
     groupItems.forEach((record) => {
-      fallbackMetricsByRecordId.set(record.id, {
-        dailyMileageValue: fallbackDailyMileage,
-        endOfDayOdometer: dayEndOdometer
+      metricsByRecordId.set(record.id, {
+        dailyMileage,
+        endOfDayOdometer
       })
     })
   })
 
-  return fallbackMetricsByRecordId
+  return metricsByRecordId
 }
 
 function filterRecordsByDateRange(records, fromDate, toDate) {
@@ -285,23 +282,6 @@ function getCurrentFilteredAndSortedRecords() {
   return sortRecords(filteredRecords, elements.sortOrderInput.value)
 }
 
-function buildRowValues(record, fallbackMetricsByRecordId) {
-  const fallbackMetrics = fallbackMetricsByRecordId.get(record.id) || { dailyMileageValue: 0, endOfDayOdometer: record.odometerValue }
-  const dailyMileageValue = Number.isFinite(record.dailyMileageValue) && record.dailyMileageValue >= 0 ? record.dailyMileageValue : fallbackMetrics.dailyMileageValue
-  const endOfDayOdometer = record.odometerValue + dailyMileageValue
-
-  return [
-    record.driverFullName,
-    record.tripDate,
-    record.vehicleNumber,
-    String(record.odometerValue),
-    String(dailyMileageValue),
-    String(endOfDayOdometer),
-    record.tripDescription,
-    convertTimestampToText(record.createdAt)
-  ]
-}
-
 function renderJournal(records) {
   elements.journalTableBody.innerHTML = ''
 
@@ -310,13 +290,23 @@ function renderJournal(records) {
     return
   }
 
-  const fallbackMetricsByRecordId = buildFallbackMetricsByRecordId(records)
+  const metricsByRecordId = buildTripMetricsByRecordId(records)
   const rowFragment = document.createDocumentFragment()
 
   records.forEach((record) => {
-    const rowValues = buildRowValues(record, fallbackMetricsByRecordId)
-    const rowElement = document.createElement('tr')
+    const metrics = metricsByRecordId.get(record.id) || { dailyMileage: 0, endOfDayOdometer: 0 }
+    const rowValues = [
+      record.driverFullName,
+      record.tripDate,
+      record.vehicleNumber,
+      String(record.odometerValue),
+      record.tripDescription,
+      convertTimestampToText(record.createdAt),
+      String(metrics.dailyMileage),
+      String(metrics.endOfDayOdometer)
+    ]
 
+    const rowElement = document.createElement('tr')
     rowValues.forEach((value, index) => {
       const cellElement = document.createElement('td')
       cellElement.textContent = value
@@ -339,8 +329,21 @@ function applyFiltersAndRenderJournal() {
 }
 
 function createCsvContent(records) {
-  const fallbackMetricsByRecordId = buildFallbackMetricsByRecordId(records)
-  const rows = records.map((record) => buildRowValues(record, fallbackMetricsByRecordId))
+  const metricsByRecordId = buildTripMetricsByRecordId(records)
+  const rows = records.map((record) => {
+    const metrics = metricsByRecordId.get(record.id) || { dailyMileage: 0, endOfDayOdometer: 0 }
+    return [
+      record.driverFullName,
+      record.tripDate,
+      record.vehicleNumber,
+      String(record.odometerValue),
+      record.tripDescription,
+      convertTimestampToText(record.createdAt),
+      String(metrics.dailyMileage),
+      String(metrics.endOfDayOdometer)
+    ]
+  })
+
   const csvRows = [journalColumnTitles, ...rows].map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(';'))
   return `\uFEFF${csvRows.join('\n')}`
 }
@@ -378,35 +381,11 @@ function exportRecords(records, prefixText) {
   elements.journalStatus.textContent = `Скачано записей: ${records.length}`
 }
 
-function stopExistingTripRecordsSubscription() {
-  if (!stopTripRecordsSubscription) {
-    return
-  }
-  stopTripRecordsSubscription()
-  stopTripRecordsSubscription = null
-}
-
-function updateJournalSubscriptionForUser() {
-  stopExistingTripRecordsSubscription()
-
-  if (!canAccessJournal(activeUser)) {
-    allTripRecords = []
-    elements.journalTableBody.innerHTML = ''
-    return
-  }
-
-  stopTripRecordsSubscription = onSnapshot(collection(database, 'tripRecords'), (snapshot) => {
-    allTripRecords = snapshot.docs.map((documentSnapshot) => normalizeTripRecord(documentSnapshot))
-    applyFiltersAndRenderJournal()
-  }, (error) => {
-    elements.journalStatus.textContent = `Ошибка чтения журнала: ${error.message}`
-  })
-}
-
 function updateVisibilityForUser(user) {
   activeUser = user
   const ownerAccess = isOwner(user)
-  const journalAccess = canAccessJournal(user)
+  const responsibleAccess = isResponsible(user)
+  const journalAccess = ownerAccess || responsibleAccess
 
   elements.logoutButton.classList.toggle('hidden', !user)
   elements.tripCard.classList.toggle('hidden', !user)
@@ -418,7 +397,6 @@ function updateVisibilityForUser(user) {
     elements.managerStatus.textContent = ''
     elements.journalStatus.textContent = ''
     elements.journalTableBody.innerHTML = ''
-    updateJournalSubscriptionForUser()
     return
   }
 
@@ -432,11 +410,9 @@ function updateVisibilityForUser(user) {
 
   if (!journalAccess) {
     elements.journalStatus.textContent = `Журнал доступен владельцу ${ownerEmailAddress} и ответственному ${responsibleEmailAddress}`
-    updateJournalSubscriptionForUser()
     return
   }
 
-  updateJournalSubscriptionForUser()
   applyFiltersAndRenderJournal()
 }
 
@@ -446,7 +422,6 @@ function getTripRecordFromForm() {
     tripDate: elements.tripDateInput.value,
     vehicleNumber: elements.vehicleNumberInput.value,
     odometerValue: Number(elements.odometerInput.value),
-    dailyMileageValue: Number(elements.dailyMileageInput.value),
     tripDescription: elements.tripDescriptionInput.value.trim(),
     createdAt: serverTimestamp(),
     createdByUserId: activeUser.uid,
@@ -461,8 +436,6 @@ function validateTripRecord(tripRecord) {
     && tripRecord.vehicleNumber
     && Number.isFinite(tripRecord.odometerValue)
     && tripRecord.odometerValue >= 0
-    && Number.isFinite(tripRecord.dailyMileageValue)
-    && tripRecord.dailyMileageValue >= 0
     && tripRecord.tripDescription
   )
 }
@@ -523,6 +496,15 @@ async function logoutCurrentUser() {
   }
 }
 
+function subscribeToTripRecords() {
+  onSnapshot(collection(database, 'tripRecords'), (snapshot) => {
+    allTripRecords = snapshot.docs.map((documentSnapshot) => normalizeTripRecord(documentSnapshot))
+    applyFiltersAndRenderJournal()
+  }, (error) => {
+    elements.journalStatus.textContent = `Ошибка чтения журнала: ${error.message}`
+  })
+}
+
 function exportFilteredRecords() {
   if (!canAccessJournal(activeUser)) {
     return
@@ -534,7 +516,8 @@ function exportAllRecords() {
   if (!canAccessJournal(activeUser)) {
     return
   }
-  exportRecords(sortRecords(allTripRecords, elements.sortOrderInput.value), 'autotrack-journal-all')
+  const sortedRecords = sortRecords(allTripRecords, elements.sortOrderInput.value)
+  exportRecords(sortedRecords, 'autotrack-journal-all')
 }
 
 function resetFilters() {
@@ -557,8 +540,6 @@ function attachEventListeners() {
   elements.tripForm.addEventListener('submit', submitTripRecord)
   elements.applyFilterButton.addEventListener('click', applyFiltersAndRenderJournal)
   elements.resetFilterButton.addEventListener('click', resetFilters)
-  elements.dateFromInput.addEventListener('change', applyFiltersAndRenderJournal)
-  elements.dateToInput.addEventListener('change', applyFiltersAndRenderJournal)
   elements.sortOrderInput.addEventListener('change', applyFiltersAndRenderJournal)
   elements.exportFilteredButton.addEventListener('click', exportFilteredRecords)
   elements.exportAllButton.addEventListener('click', exportAllRecords)
@@ -569,11 +550,9 @@ async function startApplication() {
   populateVehicleNumbers()
   setDefaultTripDate()
   attachEventListeners()
-  onAuthStateChanged(authentication, async (user) => {
-    activeUser = user
-    await loadResponsibleEmailAddress()
-    updateVisibilityForUser(user)
-  })
+  await loadResponsibleEmailAddress()
+  subscribeToTripRecords()
+  onAuthStateChanged(authentication, updateVisibilityForUser)
 }
 
 startApplication()

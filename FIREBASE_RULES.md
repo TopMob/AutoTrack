@@ -44,7 +44,6 @@ service cloud.firestore {
         'tripDate',
         'vehicleNumber',
         'odometerValue',
-        'dailyMileageValue',
         'tripDescription',
         'createdAt',
         'createdByUserId',
@@ -60,8 +59,6 @@ service cloud.firestore {
       && request.resource.data.vehicleNumber.size() <= 20
       && request.resource.data.odometerValue is int
       && request.resource.data.odometerValue >= 0
-      && request.resource.data.dailyMileageValue is int
-      && request.resource.data.dailyMileageValue >= 0
       && request.resource.data.tripDescription is string
       && request.resource.data.tripDescription.size() >= 3
       && request.resource.data.tripDescription.size() <= 3000

@@ -59,12 +59,8 @@
           <select id="vehicleNumberInput" required></select>
         </label>
         <label class="field">
-          <span>Одометр на начало дня</span>
+          <span>Пробег одометра</span>
           <input type="number" id="odometerInput" min="0" step="1" required>
-        </label>
-        <label class="field">
-          <span>Суточный пробег</span>
-          <input type="number" id="dailyMileageInput" min="0" step="1" required>
         </label>
         <label class="field">
           <span>Текст поездки</span>
@@ -94,8 +90,8 @@
               <option value="tripDateAsc">Дата поездки: старые сверху</option>
               <option value="createdAtDesc">Дата создания: новые сверху</option>
               <option value="createdAtAsc">Дата создания: старые сверху</option>
-              <option value="odometerDesc">Одометр: по убыванию</option>
-              <option value="odometerAsc">Одометр: по возрастанию</option>
+              <option value="odometerDesc">Пробег: по убыванию</option>
+              <option value="odometerAsc">Пробег: по возрастанию</option>
             </select>
           </label>
         </div>
@@ -113,11 +109,11 @@
               <th>ФИО</th>
               <th>Дата поездки</th>
               <th>Номер машины</th>
-              <th>Одометр</th>
-              <th>Суточный пробег</th>
-              <th>Одометр на конец дня</th>
+              <th>Пробег</th>
               <th>Текст поездки</th>
               <th>Дата создания</th>
+              <th>Суточный пробег</th>
+              <th>Одометр на конец дня</th>
             </tr>
           </thead>
           <tbody id="journalTableBody"></tbody>
