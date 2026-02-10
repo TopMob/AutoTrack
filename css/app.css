@@ -1,0 +1,270 @@
+:root {
+  --background: #eef2ff;
+  --background-gradient: radial-gradient(circle at top right, #dbeafe 0%, #eef2ff 45%, #f8fafc 100%);
+  --card-background: rgba(255, 255, 255, 0.94);
+  --card-border: #dbe3f4;
+  --text-main: #0f172a;
+  --text-muted: #475569;
+  --field-background: #ffffff;
+  --field-border: #cbd5e1;
+  --table-header: #dbeafe;
+  --table-border: #dbe3f4;
+  --shadow: 0 12px 34px rgba(15, 23, 42, 0.12);
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --secondary-background: #e2e8f0;
+  --secondary-hover: #cbd5e1;
+  --secondary-text: #0f172a;
+}
+
+html[data-theme='dark'] {
+  --background: #0b1220;
+  --background-gradient: radial-gradient(circle at top right, #172554 0%, #0b1220 50%, #020617 100%);
+  --card-background: rgba(15, 23, 42, 0.9);
+  --card-border: #243041;
+  --text-main: #e2e8f0;
+  --text-muted: #94a3b8;
+  --field-background: #0f172a;
+  --field-border: #334155;
+  --table-header: #1e293b;
+  --table-border: #243041;
+  --shadow: 0 16px 40px rgba(2, 6, 23, 0.5);
+  --primary: #3b82f6;
+  --primary-hover: #2563eb;
+  --secondary-background: #1e293b;
+  --secondary-hover: #334155;
+  --secondary-text: #e2e8f0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: Inter, Arial, sans-serif;
+  background: var(--background-gradient);
+  color: var(--text-main);
+}
+
+.page {
+  max-width: 1250px;
+  margin: 0 auto;
+  padding: 24px;
+  display: grid;
+  gap: 16px;
+}
+
+.card {
+  background: var(--card-background);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 18px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(8px);
+}
+
+.card-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+h1,
+h2 {
+  margin: 0;
+}
+
+#authStatus {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+}
+
+.stack {
+  display: grid;
+  gap: 12px;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  flex: 1;
+  min-width: 250px;
+}
+
+.field.compact {
+  min-width: 180px;
+  flex: 0;
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+}
+
+input,
+textarea,
+select {
+  border: 1px solid var(--field-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--field-background);
+  color: var(--text-main);
+}
+
+textarea {
+  resize: vertical;
+}
+
+button {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: var(--primary);
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+button:hover {
+  background: var(--primary-hover);
+}
+
+button.secondary {
+  background: var(--secondary-background);
+  color: var(--secondary-text);
+}
+
+button.secondary:hover {
+  background: var(--secondary-hover);
+}
+
+.hidden {
+  display: none;
+}
+
+.status {
+  margin: 12px 0 0;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.table-wrap {
+  margin-top: 14px;
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 980px;
+  background: var(--field-background);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+th,
+td {
+  border: 1px solid var(--table-border);
+  text-align: left;
+  padding: 9px;
+  vertical-align: top;
+}
+
+th {
+  background: var(--table-header);
+}
+
+@media (max-width: 900px) {
+  .page {
+    padding: 14px;
+  }
+
+  .card {
+    padding: 14px;
+    border-radius: 14px;
+  }
+
+  .card-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .field,
+  .field.compact {
+    min-width: 100%;
+    flex: 1;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .row button {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 700px) {
+  .table-wrap {
+    overflow: visible;
+  }
+
+  table,
+  thead,
+  tbody,
+  tr,
+  td,
+  th {
+    display: block;
+    width: 100%;
+  }
+
+  thead {
+    display: none;
+  }
+
+  tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  tr {
+    border: 1px solid var(--table-border);
+    border-radius: 12px;
+    background: var(--field-background);
+    padding: 8px;
+  }
+
+  td {
+    border: 0;
+    border-bottom: 1px solid var(--table-border);
+    padding: 8px 6px;
+    display: grid;
+    gap: 4px;
+    word-break: break-word;
+  }
+
+  td:last-child {
+    border-bottom: 0;
+  }
+
+  td::before {
+    content: attr(data-label);
+    font-weight: 700;
+    color: var(--text-muted);
+  }
+}
