@@ -12,8 +12,30 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function normalizedOwnerEmail() {
+      return 'shazak6430@gmail.com';
+    }
+
+    function managerSettingsPath() {
+      return /databases/$(database)/documents/systemSettings/responsibleAssignment;
+    }
+
+    function currentResponsibleEmail() {
+      return exists(managerSettingsPath())
+        ? get(managerSettingsPath()).data.responsibleEmail
+        : 'responsible@autotrack.local';
+    }
+
+    function isOwner() {
+      return isSignedIn() && request.auth.token.email == normalizedOwnerEmail();
+    }
+
     function isResponsible() {
-      return isSignedIn() && request.auth.token.email == 'responsible@autotrack.local';
+      return isSignedIn() && request.auth.token.email == currentResponsibleEmail();
+    }
+
+    function canReadJournal() {
+      return isOwner() || isResponsible();
     }
 
     function isValidTripRecordCreate() {
@@ -45,10 +67,29 @@ service cloud.firestore {
       && request.resource.data.createdByEmail is string;
     }
 
+    function isValidResponsibleAssignmentWrite() {
+      return request.resource.data.keys().hasOnly([
+        'responsibleEmail',
+        'updatedAt',
+        'updatedByEmail'
+      ])
+      && request.resource.data.responsibleEmail is string
+      && request.resource.data.responsibleEmail.size() >= 5
+      && request.resource.data.responsibleEmail.size() <= 120
+      && request.resource.data.updatedAt == request.time
+      && request.resource.data.updatedByEmail == normalizedOwnerEmail();
+    }
+
     match /tripRecords/{recordId} {
       allow create: if isSignedIn() && isValidTripRecordCreate();
-      allow read: if isResponsible();
+      allow read: if canReadJournal();
       allow update, delete: if false;
+    }
+
+    match /systemSettings/responsibleAssignment {
+      allow read: if isSignedIn();
+      allow create, update: if isOwner() && isValidResponsibleAssignmentWrite();
+      allow delete: if false;
     }
 
     match /{document=**} {
@@ -60,7 +101,7 @@ service cloud.firestore {
 
 ## 2. Firebase Storage Rules
 
-Если в проекте не используется загрузка файлов, храните Storage полностью закрытым.
+Если загрузка файлов не используется, оставьте Storage закрытым.
 
 ```rules
 rules_version = '2';
@@ -78,13 +119,6 @@ service firebase.storage {
 В Firebase Console → Authentication → Sign-in method включите:
 
 - Email/Password
-- Google
-- Anonymous
-
-Для Google провайдера проверьте:
-
-- добавлен корректный OAuth Client ID
-- в Authorized domains есть ваш боевой домен
 
 ## 4. Индекс Firestore
 
@@ -95,8 +129,9 @@ service firebase.storage {
   - `tripDate` Descending
   - `createdAt` Descending
 
-## 5. Что важно синхронизировать с приложением
+## 5. Что должно совпадать с приложением
 
-- Значение email ответственного в коде приложения должно совпадать со значением в правилах (`responsible@autotrack.local`).
-- Поля, которые отправляет форма поездки, должны строго совпадать со списком `hasOnly(...)` в правилах.
-- `createdAt` должен писаться только как server timestamp, иначе запись будет блокироваться правилами.
+- Email владельца: `shazak6430@gmail.com`
+- Путь документа ответственного: `systemSettings/responsibleAssignment`
+- Поля записи поездки должны совпадать с `isValidTripRecordCreate`
+- `createdAt` и `updatedAt` должны писаться как server timestamp

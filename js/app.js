@@ -1,11 +1,8 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js'
 import {
   getAuth,
-  GoogleAuthProvider,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
-  signInWithPopup,
-  signInAnonymously,
   onAuthStateChanged,
   signOut
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js'
@@ -16,7 +13,10 @@ import {
   onSnapshot,
   query,
   orderBy,
-  serverTimestamp
+  serverTimestamp,
+  doc,
+  setDoc,
+  getDoc
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js'
 
 const firebaseConfiguration = {
@@ -29,24 +29,26 @@ const firebaseConfiguration = {
   measurementId: 'G-KHDYP2KJJ2'
 }
 
-const responsibleEmailAddress = 'responsible@autotrack.local'
+const ownerEmailAddress = 'shazak6430@gmail.com'
+const fallbackResponsibleEmailAddress = 'responsible@autotrack.local'
 const vehicleNumbers = ['A001AA', 'A002AA', 'A003AA', 'A004AA', 'A005AA']
+const managerSettingsDocumentPath = ['systemSettings', 'responsibleAssignment']
 
 const application = initializeApp(firebaseConfiguration)
 const authentication = getAuth(application)
 const database = getFirestore(application)
-const googleProvider = new GoogleAuthProvider()
 
 const elements = {
   authStatus: document.getElementById('authStatus'),
   emailAuthForm: document.getElementById('emailAuthForm'),
   emailInput: document.getElementById('emailInput'),
   passwordInput: document.getElementById('passwordInput'),
-  emailLoginButton: document.getElementById('emailLoginButton'),
   emailRegisterButton: document.getElementById('emailRegisterButton'),
-  googleLoginButton: document.getElementById('googleLoginButton'),
-  guestLoginButton: document.getElementById('guestLoginButton'),
   logoutButton: document.getElementById('logoutButton'),
+  managerCard: document.getElementById('managerCard'),
+  managerStatus: document.getElementById('managerStatus'),
+  managerEmailInput: document.getElementById('managerEmailInput'),
+  saveManagerButton: document.getElementById('saveManagerButton'),
   tripCard: document.getElementById('tripCard'),
   tripForm: document.getElementById('tripForm'),
   driverFullNameInput: document.getElementById('driverFullNameInput'),
@@ -58,6 +60,7 @@ const elements = {
   journalCard: document.getElementById('journalCard'),
   dateFromInput: document.getElementById('dateFromInput'),
   dateToInput: document.getElementById('dateToInput'),
+  sortOrderInput: document.getElementById('sortOrderInput'),
   applyFilterButton: document.getElementById('applyFilterButton'),
   resetFilterButton: document.getElementById('resetFilterButton'),
   exportFilteredButton: document.getElementById('exportFilteredButton'),
@@ -68,21 +71,76 @@ const elements = {
 
 let activeUser = null
 let allTripRecords = []
+let responsibleEmailAddress = fallbackResponsibleEmailAddress
 
-function populateVehicleNumbers() {
-  const fragment = document.createDocumentFragment()
-  vehicleNumbers.forEach((vehicleNumber) => {
-    const option = document.createElement('option')
-    option.value = vehicleNumber
-    option.textContent = vehicleNumber
-    fragment.append(option)
-  })
-  elements.vehicleNumberInput.innerHTML = ''
-  elements.vehicleNumberInput.append(fragment)
+function normalizeEmail(emailAddress) {
+  return String(emailAddress || '').trim().toLowerCase()
 }
 
-function isResponsibleUser(user) {
-  return user?.email?.toLowerCase() === responsibleEmailAddress.toLowerCase()
+function isOwner(user) {
+  return normalizeEmail(user?.email) === normalizeEmail(ownerEmailAddress)
+}
+
+function isResponsible(user) {
+  return normalizeEmail(user?.email) === normalizeEmail(responsibleEmailAddress)
+}
+
+function canAccessJournal(user) {
+  return isOwner(user) || isResponsible(user)
+}
+
+function getManagerSettingsReference() {
+  return doc(database, managerSettingsDocumentPath[0], managerSettingsDocumentPath[1])
+}
+
+async function loadResponsibleEmailAddress() {
+  const managerSettingsSnapshot = await getDoc(getManagerSettingsReference())
+  if (!managerSettingsSnapshot.exists()) {
+    responsibleEmailAddress = fallbackResponsibleEmailAddress
+    elements.managerEmailInput.value = responsibleEmailAddress
+    return
+  }
+  const managerSettings = managerSettingsSnapshot.data()
+  const storedEmailAddress = normalizeEmail(managerSettings.responsibleEmail)
+  responsibleEmailAddress = storedEmailAddress || fallbackResponsibleEmailAddress
+  elements.managerEmailInput.value = responsibleEmailAddress
+}
+
+async function saveResponsibleEmailAddress() {
+  if (!isOwner(activeUser)) {
+    return
+  }
+
+  const emailAddressCandidate = normalizeEmail(elements.managerEmailInput.value)
+  const isValidEmailAddress = emailAddressCandidate.includes('@') && emailAddressCandidate.includes('.')
+
+  if (!isValidEmailAddress) {
+    elements.managerStatus.textContent = 'Введите корректный email ответственного'
+    return
+  }
+
+  await setDoc(getManagerSettingsReference(), {
+    responsibleEmail: emailAddressCandidate,
+    updatedAt: serverTimestamp(),
+    updatedByEmail: normalizeEmail(activeUser.email)
+  })
+
+  responsibleEmailAddress = emailAddressCandidate
+  elements.managerStatus.textContent = `Ответственный сохранен: ${responsibleEmailAddress}`
+  updateVisibilityForUser(activeUser)
+  applyFiltersAndRenderJournal()
+}
+
+function populateVehicleNumbers() {
+  const optionsFragment = document.createDocumentFragment()
+  vehicleNumbers.forEach((vehicleNumber) => {
+    const optionElement = document.createElement('option')
+    optionElement.value = vehicleNumber
+    optionElement.textContent = vehicleNumber
+    optionsFragment.append(optionElement)
+  })
+  elements.vehicleNumberInput.innerHTML = ''
+  elements.vehicleNumberInput.append(optionsFragment)
 }
 
 function convertTimestampToText(timestampValue) {
@@ -92,27 +150,35 @@ function convertTimestampToText(timestampValue) {
   return timestampValue.toDate().toLocaleString('ru-RU')
 }
 
-function buildTripMetrics(records) {
-  const recordsByDayAndVehicle = new Map()
+function getTimestampMilliseconds(timestampValue) {
+  if (!timestampValue?.toMillis) {
+    return 0
+  }
+  return timestampValue.toMillis()
+}
+
+function buildTripMetricsByRecordId(records) {
+  const recordsByDateAndVehicle = new Map()
+
   records.forEach((record) => {
-    const key = `${record.tripDate}|${record.vehicleNumber}`
-    if (!recordsByDayAndVehicle.has(key)) {
-      recordsByDayAndVehicle.set(key, [])
-    }
-    recordsByDayAndVehicle.get(key).push(record)
+    const groupingKey = `${record.tripDate}|${record.vehicleNumber}`
+    const groupedRecords = recordsByDateAndVehicle.get(groupingKey) || []
+    groupedRecords.push(record)
+    recordsByDateAndVehicle.set(groupingKey, groupedRecords)
   })
 
   const metricsByRecordId = new Map()
 
-  recordsByDayAndVehicle.forEach((recordsGroup) => {
-    const odometerValues = recordsGroup.map((record) => Number(record.odometerValue)).filter((value) => Number.isFinite(value))
-    const dayStartOdometer = odometerValues.length ? Math.min(...odometerValues) : 0
-    const dayEndOdometer = odometerValues.length ? Math.max(...odometerValues) : 0
-    const dailyMileage = Math.max(dayEndOdometer - dayStartOdometer, 0)
-    recordsGroup.forEach((record) => {
+  recordsByDateAndVehicle.forEach((groupedRecords) => {
+    const odometerValues = groupedRecords.map((record) => Number(record.odometerValue)).filter(Number.isFinite)
+    const startOfDayOdometer = odometerValues.length ? Math.min(...odometerValues) : 0
+    const endOfDayOdometer = odometerValues.length ? Math.max(...odometerValues) : 0
+    const dailyMileage = Math.max(endOfDayOdometer - startOfDayOdometer, 0)
+
+    groupedRecords.forEach((record) => {
       metricsByRecordId.set(record.id, {
         dailyMileage,
-        endOfDayOdometer: dayEndOdometer
+        endOfDayOdometer
       })
     })
   })
@@ -120,16 +186,48 @@ function buildTripMetrics(records) {
   return metricsByRecordId
 }
 
-function filterRecordsByDates(records, fromDate, toDate) {
+function filterRecordsByDateRange(records, fromDate, toDate) {
   return records.filter((record) => {
-    const passesFrom = fromDate ? record.tripDate >= fromDate : true
-    const passesTo = toDate ? record.tripDate <= toDate : true
-    return passesFrom && passesTo
+    const passesFromBoundary = fromDate ? record.tripDate >= fromDate : true
+    const passesToBoundary = toDate ? record.tripDate <= toDate : true
+    return passesFromBoundary && passesToBoundary
   })
 }
 
+function sortRecords(records, sortingMode) {
+  const recordsCopy = [...records]
+
+  recordsCopy.sort((firstRecord, secondRecord) => {
+    if (sortingMode === 'tripDateAsc') {
+      return firstRecord.tripDate.localeCompare(secondRecord.tripDate)
+    }
+    if (sortingMode === 'tripDateDesc') {
+      return secondRecord.tripDate.localeCompare(firstRecord.tripDate)
+    }
+    if (sortingMode === 'createdAtAsc') {
+      return getTimestampMilliseconds(firstRecord.createdAt) - getTimestampMilliseconds(secondRecord.createdAt)
+    }
+    if (sortingMode === 'createdAtDesc') {
+      return getTimestampMilliseconds(secondRecord.createdAt) - getTimestampMilliseconds(firstRecord.createdAt)
+    }
+    if (sortingMode === 'odometerAsc') {
+      return Number(firstRecord.odometerValue) - Number(secondRecord.odometerValue)
+    }
+    if (sortingMode === 'odometerDesc') {
+      return Number(secondRecord.odometerValue) - Number(firstRecord.odometerValue)
+    }
+    return 0
+  })
+
+  return recordsCopy
+}
+
+function getCurrentFilteredAndSortedRecords() {
+  const filteredRecords = filterRecordsByDateRange(allTripRecords, elements.dateFromInput.value, elements.dateToInput.value)
+  return sortRecords(filteredRecords, elements.sortOrderInput.value)
+}
+
 function renderJournal(records) {
-  const metricsByRecordId = buildTripMetrics(records)
   elements.journalTableBody.innerHTML = ''
 
   if (!records.length) {
@@ -137,13 +235,14 @@ function renderJournal(records) {
     return
   }
 
-  const fragment = document.createDocumentFragment()
+  const metricsByRecordId = buildTripMetricsByRecordId(records)
+  const tableRowsFragment = document.createDocumentFragment()
 
   records.forEach((record) => {
-    const row = document.createElement('tr')
+    const rowElement = document.createElement('tr')
     const metrics = metricsByRecordId.get(record.id) || { dailyMileage: 0, endOfDayOdometer: 0 }
 
-    const values = [
+    const valuesForRow = [
       record.driverFullName,
       record.tripDate,
       record.vehicleNumber,
@@ -154,22 +253,31 @@ function renderJournal(records) {
       String(metrics.endOfDayOdometer)
     ]
 
-    values.forEach((value) => {
-      const cell = document.createElement('td')
-      cell.textContent = value
-      row.append(cell)
+    valuesForRow.forEach((value) => {
+      const cellElement = document.createElement('td')
+      cellElement.textContent = value
+      rowElement.append(cellElement)
     })
 
-    fragment.append(row)
+    tableRowsFragment.append(rowElement)
   })
 
-  elements.journalTableBody.append(fragment)
+  elements.journalTableBody.append(tableRowsFragment)
   elements.journalStatus.textContent = `Показано записей: ${records.length}`
 }
 
+function applyFiltersAndRenderJournal() {
+  if (!canAccessJournal(activeUser)) {
+    return
+  }
+  const recordsForDisplay = getCurrentFilteredAndSortedRecords()
+  renderJournal(recordsForDisplay)
+}
+
 function createCsvContent(records) {
-  const metricsByRecordId = buildTripMetrics(records)
-  const header = ['ФИО', 'Дата поездки', 'Номер машины', 'Пробег', 'Текст поездки', 'Дата создания', 'Суточный пробег', 'Одометр на конец дня']
+  const metricsByRecordId = buildTripMetricsByRecordId(records)
+  const headerColumns = ['ФИО', 'Дата поездки', 'Номер машины', 'Пробег', 'Текст поездки', 'Дата создания', 'Суточный пробег', 'Одометр на конец дня']
+
   const rows = records.map((record) => {
     const metrics = metricsByRecordId.get(record.id) || { dailyMileage: 0, endOfDayOdometer: 0 }
     return [
@@ -184,46 +292,82 @@ function createCsvContent(records) {
     ]
   })
 
-  const csvRows = [header, ...rows].map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(';'))
+  const csvRows = [headerColumns, ...rows]
+    .map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(';'))
+
   return `\uFEFF${csvRows.join('\n')}`
 }
 
 function downloadCsvFile(fileName, records) {
   const csvContent = createCsvContent(records)
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-  const objectUrl = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = objectUrl
-  link.download = fileName
-  document.body.append(link)
-  link.click()
-  link.remove()
+  const csvBlob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  const objectUrl = URL.createObjectURL(csvBlob)
+  const downloadLink = document.createElement('a')
+  downloadLink.href = objectUrl
+  downloadLink.download = fileName
+  document.body.append(downloadLink)
+  downloadLink.click()
+  downloadLink.remove()
   URL.revokeObjectURL(objectUrl)
 }
 
 function updateVisibilityForUser(user) {
   activeUser = user
-  const responsibleUser = isResponsibleUser(user)
-  elements.tripCard.classList.toggle('hidden', !user)
+  const owner = isOwner(user)
+  const responsible = isResponsible(user)
+  const journalAccess = owner || responsible
+
   elements.logoutButton.classList.toggle('hidden', !user)
-  elements.journalCard.classList.toggle('hidden', !responsibleUser)
+  elements.tripCard.classList.toggle('hidden', !user)
+  elements.managerCard.classList.toggle('hidden', !owner)
+  elements.journalCard.classList.toggle('hidden', !journalAccess)
 
   if (!user) {
-    elements.authStatus.textContent = 'Выполните вход для работы с журналом'
+    elements.authStatus.textContent = 'Выполните вход по email'
     elements.journalTableBody.innerHTML = ''
     elements.journalStatus.textContent = ''
+    elements.managerStatus.textContent = ''
     return
   }
 
-  if (user.isAnonymous) {
-    elements.authStatus.textContent = 'Вход выполнен как гость'
+  elements.authStatus.textContent = `Вход выполнен: ${normalizeEmail(user.email)}`
+
+  if (owner) {
+    elements.managerStatus.textContent = `Владелец. Текущий ответственный: ${responsibleEmailAddress}`
   } else {
-    elements.authStatus.textContent = `Вход выполнен: ${user.email}`
+    elements.managerStatus.textContent = ''
   }
 
-  if (!responsibleUser) {
-    elements.journalStatus.textContent = `Все отправленные записи попадают ответственному: ${responsibleEmailAddress}`
+  if (!journalAccess) {
+    elements.journalStatus.textContent = `Журнал доступен владельцу ${ownerEmailAddress} и ответственному ${responsibleEmailAddress}`
+    return
   }
+
+  applyFiltersAndRenderJournal()
+}
+
+function getTripRecordFromForm() {
+  return {
+    driverFullName: elements.driverFullNameInput.value.trim(),
+    tripDate: elements.tripDateInput.value,
+    vehicleNumber: elements.vehicleNumberInput.value,
+    odometerValue: Number(elements.odometerInput.value),
+    tripDescription: elements.tripDescriptionInput.value.trim(),
+    createdAt: serverTimestamp(),
+    createdByUserId: activeUser.uid,
+    createdByEmail: normalizeEmail(activeUser.email)
+  }
+}
+
+function validateTripRecord(tripRecord) {
+  return Boolean(
+    tripRecord.driverFullName
+    && tripRecord.tripDate
+    && tripRecord.vehicleNumber
+    && Number.isFinite(tripRecord.odometerValue)
+    && tripRecord.odometerValue >= 0
+    && tripRecord.tripDescription
+  )
 }
 
 async function submitTripRecord(event) {
@@ -234,70 +378,42 @@ async function submitTripRecord(event) {
     return
   }
 
-  const tripRecord = {
-    driverFullName: elements.driverFullNameInput.value.trim(),
-    tripDate: elements.tripDateInput.value,
-    vehicleNumber: elements.vehicleNumberInput.value,
-    odometerValue: Number(elements.odometerInput.value),
-    tripDescription: elements.tripDescriptionInput.value.trim(),
-    createdAt: serverTimestamp(),
-    createdByUserId: activeUser.uid,
-    createdByEmail: activeUser.email || 'guest'
-  }
-
-  const isFormValid = tripRecord.driverFullName && tripRecord.tripDate && tripRecord.vehicleNumber && Number.isFinite(tripRecord.odometerValue) && tripRecord.tripDescription
-  if (!isFormValid) {
-    elements.tripFormStatus.textContent = 'Заполните все поля корректно'
+  const tripRecord = getTripRecordFromForm()
+  if (!validateTripRecord(tripRecord)) {
+    elements.tripFormStatus.textContent = 'Заполните поля корректно'
     return
   }
 
   try {
     await addDoc(collection(database, 'tripRecords'), tripRecord)
-    elements.tripFormStatus.textContent = 'Запись отправлена ответственному'
+    elements.tripFormStatus.textContent = 'Запись сохранена'
     elements.tripForm.reset()
-    const today = new Date().toISOString().slice(0, 10)
-    elements.tripDateInput.value = today
+    elements.tripDateInput.value = new Date().toISOString().slice(0, 10)
   } catch (error) {
-    elements.tripFormStatus.textContent = `Ошибка отправки: ${error.message}`
+    elements.tripFormStatus.textContent = `Ошибка сохранения: ${error.message}`
   }
 }
 
 async function loginWithEmail(event) {
   event.preventDefault()
-  const email = elements.emailInput.value.trim()
-  const password = elements.passwordInput.value
+  const emailAddress = normalizeEmail(elements.emailInput.value)
+  const passwordValue = elements.passwordInput.value
 
   try {
-    await signInWithEmailAndPassword(authentication, email, password)
+    await signInWithEmailAndPassword(authentication, emailAddress, passwordValue)
   } catch (error) {
     elements.authStatus.textContent = `Ошибка входа: ${error.message}`
   }
 }
 
 async function registerWithEmail() {
-  const email = elements.emailInput.value.trim()
-  const password = elements.passwordInput.value
+  const emailAddress = normalizeEmail(elements.emailInput.value)
+  const passwordValue = elements.passwordInput.value
 
   try {
-    await createUserWithEmailAndPassword(authentication, email, password)
+    await createUserWithEmailAndPassword(authentication, emailAddress, passwordValue)
   } catch (error) {
     elements.authStatus.textContent = `Ошибка регистрации: ${error.message}`
-  }
-}
-
-async function loginWithGoogle() {
-  try {
-    await signInWithPopup(authentication, googleProvider)
-  } catch (error) {
-    elements.authStatus.textContent = `Ошибка Google входа: ${error.message}`
-  }
-}
-
-async function loginAsGuest() {
-  try {
-    await signInAnonymously(authentication)
-  } catch (error) {
-    elements.authStatus.textContent = `Ошибка гостевого входа: ${error.message}`
   }
 }
 
@@ -309,47 +425,37 @@ async function logoutCurrentUser() {
   }
 }
 
-function applyDateFilter() {
-  if (!isResponsibleUser(activeUser)) {
-    return
-  }
-
-  const filteredRecords = filterRecordsByDates(allTripRecords, elements.dateFromInput.value, elements.dateToInput.value)
-  renderJournal(filteredRecords)
-}
-
-function resetDateFilter() {
-  elements.dateFromInput.value = ''
-  elements.dateToInput.value = ''
-  applyDateFilter()
-}
-
 function subscribeToTripRecords() {
   const tripRecordsQuery = query(collection(database, 'tripRecords'), orderBy('tripDate', 'desc'), orderBy('createdAt', 'desc'))
 
   onSnapshot(tripRecordsQuery, (snapshot) => {
     allTripRecords = snapshot.docs.map((documentSnapshot) => ({ id: documentSnapshot.id, ...documentSnapshot.data() }))
-    if (isResponsibleUser(activeUser)) {
-      applyDateFilter()
-    }
+    applyFiltersAndRenderJournal()
   }, (error) => {
     elements.journalStatus.textContent = `Ошибка чтения журнала: ${error.message}`
   })
 }
 
 function exportFilteredRecords() {
-  if (!isResponsibleUser(activeUser)) {
+  if (!canAccessJournal(activeUser)) {
     return
   }
-  const filteredRecords = filterRecordsByDates(allTripRecords, elements.dateFromInput.value, elements.dateToInput.value)
-  downloadCsvFile('autotrack-journal-filtered.csv', filteredRecords)
+  downloadCsvFile('autotrack-journal-filtered.csv', getCurrentFilteredAndSortedRecords())
 }
 
 function exportAllRecords() {
-  if (!isResponsibleUser(activeUser)) {
+  if (!canAccessJournal(activeUser)) {
     return
   }
-  downloadCsvFile('autotrack-journal-all.csv', allTripRecords)
+  const sortedRecords = sortRecords(allTripRecords, elements.sortOrderInput.value)
+  downloadCsvFile('autotrack-journal-all.csv', sortedRecords)
+}
+
+function resetFilters() {
+  elements.dateFromInput.value = ''
+  elements.dateToInput.value = ''
+  elements.sortOrderInput.value = 'tripDateDesc'
+  applyFiltersAndRenderJournal()
 }
 
 function setDefaultTripDate() {
@@ -359,20 +465,21 @@ function setDefaultTripDate() {
 function attachEventListeners() {
   elements.emailAuthForm.addEventListener('submit', loginWithEmail)
   elements.emailRegisterButton.addEventListener('click', registerWithEmail)
-  elements.googleLoginButton.addEventListener('click', loginWithGoogle)
-  elements.guestLoginButton.addEventListener('click', loginAsGuest)
   elements.logoutButton.addEventListener('click', logoutCurrentUser)
+  elements.saveManagerButton.addEventListener('click', saveResponsibleEmailAddress)
   elements.tripForm.addEventListener('submit', submitTripRecord)
-  elements.applyFilterButton.addEventListener('click', applyDateFilter)
-  elements.resetFilterButton.addEventListener('click', resetDateFilter)
+  elements.applyFilterButton.addEventListener('click', applyFiltersAndRenderJournal)
+  elements.resetFilterButton.addEventListener('click', resetFilters)
+  elements.sortOrderInput.addEventListener('change', applyFiltersAndRenderJournal)
   elements.exportFilteredButton.addEventListener('click', exportFilteredRecords)
   elements.exportAllButton.addEventListener('click', exportAllRecords)
 }
 
-function startApplication() {
+async function startApplication() {
   populateVehicleNumbers()
   setDefaultTripDate()
   attachEventListeners()
+  await loadResponsibleEmailAddress()
   subscribeToTripRecords()
   onAuthStateChanged(authentication, updateVisibilityForUser)
 }

@@ -8,9 +8,9 @@
 </head>
 <body>
   <main class="page">
-    <section class="card auth-card" id="authCard">
+    <section class="card" id="authCard">
       <h1>AutoTrack Журнал поездок</h1>
-      <p id="authStatus">Выполните вход для работы с журналом</p>
+      <p id="authStatus">Выполните вход по email</p>
       <form id="emailAuthForm" class="stack">
         <label class="field">
           <span>Email</span>
@@ -21,15 +21,23 @@
           <input type="password" id="passwordInput" required>
         </label>
         <div class="row">
-          <button type="submit" id="emailLoginButton">Войти</button>
+          <button type="submit">Войти</button>
           <button type="button" id="emailRegisterButton">Регистрация</button>
+          <button type="button" id="logoutButton" class="hidden">Выйти</button>
         </div>
       </form>
+    </section>
+
+    <section class="card hidden" id="managerCard">
+      <h2>Назначение ответственного</h2>
+      <p id="managerStatus" class="status"></p>
       <div class="row">
-        <button type="button" id="googleLoginButton">Войти через Google</button>
-        <button type="button" id="guestLoginButton">Гостевой вход</button>
+        <label class="field">
+          <span>Email ответственного</span>
+          <input type="email" id="managerEmailInput" required>
+        </label>
       </div>
-      <button type="button" id="logoutButton" class="hidden">Выйти</button>
+      <button type="button" id="saveManagerButton">Сохранить ответственного</button>
     </section>
 
     <section class="card hidden" id="tripCard">
@@ -48,7 +56,7 @@
           <select id="vehicleNumberInput" required></select>
         </label>
         <label class="field">
-          <span>Пробег одометра на момент поездки</span>
+          <span>Пробег одометра</span>
           <input type="number" id="odometerInput" min="0" step="1" required>
         </label>
         <label class="field">
@@ -61,7 +69,7 @@
     </section>
 
     <section class="card hidden" id="journalCard">
-      <h2>Журнал ответственного</h2>
+      <h2>Журнал поездок</h2>
       <div class="stack">
         <div class="row">
           <label class="field">
@@ -72,12 +80,23 @@
             <span>Дата до</span>
             <input type="date" id="dateToInput">
           </label>
+          <label class="field">
+            <span>Сортировка</span>
+            <select id="sortOrderInput">
+              <option value="tripDateDesc">Дата поездки: новые сверху</option>
+              <option value="tripDateAsc">Дата поездки: старые сверху</option>
+              <option value="createdAtDesc">Дата создания: новые сверху</option>
+              <option value="createdAtAsc">Дата создания: старые сверху</option>
+              <option value="odometerDesc">Пробег: по убыванию</option>
+              <option value="odometerAsc">Пробег: по возрастанию</option>
+            </select>
+          </label>
         </div>
         <div class="row">
-          <button type="button" id="applyFilterButton">Применить фильтр</button>
-          <button type="button" id="resetFilterButton">Сбросить фильтр</button>
-          <button type="button" id="exportFilteredButton">Выгрузить в Excel по фильтру</button>
-          <button type="button" id="exportAllButton">Скачать все данные</button>
+          <button type="button" id="applyFilterButton">Применить</button>
+          <button type="button" id="resetFilterButton">Сбросить</button>
+          <button type="button" id="exportFilteredButton">Экспорт фильтра</button>
+          <button type="button" id="exportAllButton">Скачать все</button>
         </div>
       </div>
       <div class="table-wrap">
