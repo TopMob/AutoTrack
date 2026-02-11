@@ -20,10 +20,18 @@ service cloud.firestore {
       return /databases/$(database)/documents/systemSettings/responsibleAssignment;
     }
 
-    function currentResponsibleEmail() {
+    function managerSettingsData() {
       return exists(managerSettingsPath())
-        ? get(managerSettingsPath()).data.responsibleEmail
-        : 'responsible@autotrack.local';
+        ? get(managerSettingsPath()).data
+        : {};
+    }
+
+    function getResponsibleEmailsFromSettings() {
+      return managerSettingsData().responsibleEmails is list
+        ? managerSettingsData().responsibleEmails
+        : managerSettingsData().responsibleEmail is string
+          ? [managerSettingsData().responsibleEmail]
+          : ['responsible@autotrack.local'];
     }
 
     function isOwner() {
@@ -31,11 +39,15 @@ service cloud.firestore {
     }
 
     function isResponsible() {
-      return isSignedIn() && request.auth.token.email == currentResponsibleEmail();
+      return isSignedIn() && request.auth.token.email in getResponsibleEmailsFromSettings();
     }
 
     function canReadJournal() {
       return isOwner() || isResponsible();
+    }
+
+    function isNonEmptyString(value, minSize, maxSize) {
+      return value is string && value.size() >= minSize && value.size() <= maxSize;
     }
 
     function isValidTripRecordCreate() {
@@ -43,41 +55,81 @@ service cloud.firestore {
         'driverFullName',
         'tripDate',
         'vehicleNumber',
+        'mileageValue',
         'odometerValue',
         'tripDescription',
         'createdAt',
         'createdByUserId',
         'createdByEmail'
       ])
-      && request.resource.data.driverFullName is string
-      && request.resource.data.driverFullName.size() >= 3
-      && request.resource.data.driverFullName.size() <= 120
+      && isNonEmptyString(request.resource.data.driverFullName, 3, 120)
       && request.resource.data.tripDate is string
       && request.resource.data.tripDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
-      && request.resource.data.vehicleNumber is string
-      && request.resource.data.vehicleNumber.size() >= 3
-      && request.resource.data.vehicleNumber.size() <= 20
+      && isNonEmptyString(request.resource.data.vehicleNumber, 3, 20)
+      && request.resource.data.mileageValue is int
+      && request.resource.data.mileageValue >= 0
       && request.resource.data.odometerValue is int
       && request.resource.data.odometerValue >= 0
-      && request.resource.data.tripDescription is string
-      && request.resource.data.tripDescription.size() >= 3
-      && request.resource.data.tripDescription.size() <= 3000
+      && isNonEmptyString(request.resource.data.tripDescription, 3, 3000)
       && request.resource.data.createdAt == request.time
       && request.resource.data.createdByUserId == request.auth.uid
       && request.resource.data.createdByEmail is string;
     }
 
-    function isValidResponsibleAssignmentWrite() {
+    function hasValidResponsibleEmailsField() {
+      return !('responsibleEmails' in request.resource.data)
+      || (
+        request.resource.data.responsibleEmails is list
+        && request.resource.data.responsibleEmails.size() > 0
+        && request.resource.data.responsibleEmails.size() <= 30
+      );
+    }
+
+    function hasValidResponsibleEmailField() {
+      return !('responsibleEmail' in request.resource.data)
+      || isNonEmptyString(request.resource.data.responsibleEmail, 5, 120);
+    }
+
+    function hasValidVehicleNumbersField() {
+      return !('vehicleNumbers' in request.resource.data)
+      || (
+        request.resource.data.vehicleNumbers is list
+        && request.resource.data.vehicleNumbers.size() > 0
+        && request.resource.data.vehicleNumbers.size() <= 200
+      );
+    }
+
+    function hasOnlyAllowedManagerSettingsKeys() {
       return request.resource.data.keys().hasOnly([
+        'responsibleEmails',
         'responsibleEmail',
+        'vehicleNumbers',
         'updatedAt',
         'updatedByEmail'
-      ])
-      && request.resource.data.responsibleEmail is string
-      && request.resource.data.responsibleEmail.size() >= 5
-      && request.resource.data.responsibleEmail.size() <= 120
-      && request.resource.data.updatedAt == request.time
-      && request.resource.data.updatedByEmail == normalizedOwnerEmail();
+      ]);
+    }
+
+    function hasValidManagerMetadata() {
+      return request.resource.data.updatedAt == request.time
+      && request.resource.data.updatedByEmail is string;
+    }
+
+    function isValidManagerSettingsWriteByOwner() {
+      return hasOnlyAllowedManagerSettingsKeys()
+      && hasValidManagerMetadata()
+      && hasValidResponsibleEmailsField()
+      && hasValidResponsibleEmailField()
+      && hasValidVehicleNumbersField();
+    }
+
+    function isValidManagerSettingsWriteByResponsible() {
+      return hasOnlyAllowedManagerSettingsKeys()
+      && hasValidManagerMetadata()
+      && hasValidVehicleNumbersField()
+      && request.resource.data.vehicleNumbers is list
+      && request.resource.data.updatedByEmail == request.auth.token.email
+      && request.resource.data.responsibleEmails == resource.data.responsibleEmails
+      && request.resource.data.responsibleEmail == resource.data.responsibleEmail;
     }
 
     match /tripRecords/{recordId} {
@@ -88,7 +140,9 @@ service cloud.firestore {
 
     match /systemSettings/responsibleAssignment {
       allow read: if isSignedIn();
-      allow create, update: if isOwner() && isValidResponsibleAssignmentWrite();
+      allow create: if isOwner() && isValidManagerSettingsWriteByOwner();
+      allow update: if (isOwner() && isValidManagerSettingsWriteByOwner())
+        || (isResponsible() && isValidManagerSettingsWriteByResponsible());
       allow delete: if false;
     }
 
@@ -114,15 +168,16 @@ service firebase.storage {
 }
 ```
 
-## 3. Authentication настройки
+## 3. Firebase Authentication
 
 В Firebase Console → Authentication → Sign-in method включите:
 
 - Email/Password
+- Anonymous
 
 ## 4. Индекс Firestore
 
-Для запроса с сортировкой по `tripDate desc` и `createdAt desc` создайте composite index:
+Для списка поездок с сортировкой используйте composite index:
 
 - Collection ID: `tripRecords`
 - Fields:
@@ -132,6 +187,6 @@ service firebase.storage {
 ## 5. Что должно совпадать с приложением
 
 - Email владельца: `shazak6430@gmail.com`
-- Путь документа ответственного: `systemSettings/responsibleAssignment`
+- Путь документа настроек: `systemSettings/responsibleAssignment`
 - Поля записи поездки должны совпадать с `isValidTripRecordCreate`
 - `createdAt` и `updatedAt` должны писаться как server timestamp

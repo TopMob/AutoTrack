@@ -2,6 +2,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/fireba
 import {
   getAuth,
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   onAuthStateChanged,
   signOut,
   signInAnonymously
@@ -13,8 +14,7 @@ import {
   onSnapshot,
   serverTimestamp,
   doc,
-  setDoc,
-  getDoc
+  setDoc
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js'
 
 const firebaseConfiguration = {
@@ -38,13 +38,18 @@ const authentication = getAuth(application)
 const database = getFirestore(application)
 
 const elements = {
+  authCard: document.getElementById('authCard'),
   themeToggleButton: document.getElementById('themeToggleButton'),
   authStatus: document.getElementById('authStatus'),
   emailAuthForm: document.getElementById('emailAuthForm'),
   emailInput: document.getElementById('emailInput'),
   passwordInput: document.getElementById('passwordInput'),
+  registerButton: document.getElementById('registerButton'),
   guestLoginButton: document.getElementById('guestLoginButton'),
-  logoutButton: document.getElementById('logoutButton'),
+  accountPanel: document.getElementById('accountPanel'),
+  accountMenuButton: document.getElementById('accountMenuButton'),
+  accountMenu: document.getElementById('accountMenu'),
+  accountLogoutButton: document.getElementById('accountLogoutButton'),
   managerCard: document.getElementById('managerCard'),
   managerStatus: document.getElementById('managerStatus'),
   managerEmailInput: document.getElementById('managerEmailInput'),
@@ -80,6 +85,8 @@ let allTripRecords = []
 let responsibleEmailAddresses = [fallbackResponsibleEmailAddress]
 let managedVehicleNumbers = [...fallbackVehicleNumbers]
 let unsubscribeFromTripRecords = null
+let unsubscribeFromManagerSettings = null
+let managerSettingsSubscriberUserIdentifier = null
 let installPromptEvent = null
 
 function normalizeEmail(emailAddress) {
@@ -88,6 +95,11 @@ function normalizeEmail(emailAddress) {
 
 function normalizeVehicleNumber(vehicleNumber) {
   return String(vehicleNumber || '').trim().toUpperCase()
+}
+
+function parseWholeNumber(value) {
+  const parsedNumber = Number.parseInt(String(value), 10)
+  return Number.isFinite(parsedNumber) ? parsedNumber : NaN
 }
 
 function isOwner(user) {
@@ -103,6 +115,14 @@ function isResponsible(user) {
 }
 
 function canAccessJournal(user) {
+  return isOwner(user) || isResponsible(user)
+}
+
+function canManageEmailAddresses(user) {
+  return isOwner(user)
+}
+
+function canManageVehicleNumbers(user) {
   return isOwner(user) || isResponsible(user)
 }
 
@@ -153,8 +173,12 @@ function toggleTheme() {
 
 function createTagEditor(inputElement, listElement, normalizer, validator) {
   let values = []
+  let isEditable = true
 
   function removeValue(valueToRemove) {
+    if (!isEditable) {
+      return
+    }
     values = values.filter((value) => value !== valueToRemove)
     render()
   }
@@ -169,14 +193,17 @@ function createTagEditor(inputElement, listElement, normalizer, validator) {
 
       const textElement = document.createElement('span')
       textElement.textContent = value
+      tagElement.append(textElement)
 
-      const removeButton = document.createElement('button')
-      removeButton.type = 'button'
-      removeButton.className = 'tag-remove-button'
-      removeButton.textContent = '×'
-      removeButton.addEventListener('click', () => removeValue(value))
+      if (isEditable) {
+        const removeButton = document.createElement('button')
+        removeButton.type = 'button'
+        removeButton.className = 'tag-remove-button'
+        removeButton.textContent = '×'
+        removeButton.addEventListener('click', () => removeValue(value))
+        tagElement.append(removeButton)
+      }
 
-      tagElement.append(textElement, removeButton)
       listFragment.append(tagElement)
     })
 
@@ -184,6 +211,10 @@ function createTagEditor(inputElement, listElement, normalizer, validator) {
   }
 
   function addFromInput() {
+    if (!isEditable) {
+      inputElement.value = ''
+      return
+    }
     const nextValue = normalizer(inputElement.value)
     inputElement.value = ''
     if (!nextValue || !validator(nextValue) || values.includes(nextValue)) {
@@ -204,6 +235,11 @@ function createTagEditor(inputElement, listElement, normalizer, validator) {
   return {
     setValues(nextValues) {
       values = [...nextValues]
+      render()
+    },
+    setEditable(nextEditableState) {
+      isEditable = Boolean(nextEditableState)
+      inputElement.disabled = !isEditable
       render()
     },
     getValues() {
@@ -235,16 +271,28 @@ function setManagerEditors() {
   vehicleNumberEditor.setValues(managedVehicleNumbers)
 }
 
+function setManagerEditorAccess(user) {
+  managerEmailEditor.setEditable(canManageEmailAddresses(user))
+  vehicleNumberEditor.setEditable(canManageVehicleNumbers(user))
+}
+
 function populateVehicleNumbers() {
+  const selectedVehicleNumber = elements.vehicleNumberInput.value
   const optionsFragment = document.createDocumentFragment()
+
   managedVehicleNumbers.forEach((vehicleNumber) => {
     const optionElement = document.createElement('option')
     optionElement.value = vehicleNumber
     optionElement.textContent = vehicleNumber
     optionsFragment.append(optionElement)
   })
+
   elements.vehicleNumberInput.innerHTML = ''
   elements.vehicleNumberInput.append(optionsFragment)
+
+  if (managedVehicleNumbers.includes(selectedVehicleNumber)) {
+    elements.vehicleNumberInput.value = selectedVehicleNumber
+  }
 }
 
 function parseResponsibleEmailAddresses(settingsData) {
@@ -265,62 +313,93 @@ function parseVehicleNumbers(settingsData) {
   return normalizedVehicleNumbers.length ? normalizedVehicleNumbers : [...fallbackVehicleNumbers]
 }
 
-async function loadManagerSettings() {
-  try {
-    const managerSettingsSnapshot = await getDoc(getManagerSettingsReference())
-    if (!managerSettingsSnapshot.exists()) {
-      responsibleEmailAddresses = [fallbackResponsibleEmailAddress]
-      managedVehicleNumbers = [...fallbackVehicleNumbers]
-      setManagerEditors()
-      populateVehicleNumbers()
-      return
-    }
-
-    const managerSettingsData = managerSettingsSnapshot.data()
-    responsibleEmailAddresses = parseResponsibleEmailAddresses(managerSettingsData)
-    managedVehicleNumbers = parseVehicleNumbers(managerSettingsData)
-    setManagerEditors()
-    populateVehicleNumbers()
-  } catch (error) {
-    elements.managerStatus.textContent = `Ошибка загрузки настроек: ${error.message}`
-    responsibleEmailAddresses = [fallbackResponsibleEmailAddress]
-    managedVehicleNumbers = [...fallbackVehicleNumbers]
-    setManagerEditors()
-    populateVehicleNumbers()
-  }
+function applyManagerSettings(settingsData) {
+  responsibleEmailAddresses = parseResponsibleEmailAddresses(settingsData)
+  managedVehicleNumbers = parseVehicleNumbers(settingsData)
+  setManagerEditors()
+  setManagerEditorAccess(activeUser)
+  populateVehicleNumbers()
 }
 
-async function saveManagerSettings() {
-  if (!isOwner(activeUser)) {
+function resetManagerSettingsToFallback() {
+  applyManagerSettings({
+    responsibleEmails: [fallbackResponsibleEmailAddress],
+    vehicleNumbers: fallbackVehicleNumbers
+  })
+}
+
+function refreshManagerSettingsSubscription() {
+  const currentUserIdentifier = activeUser?.uid || null
+  if (managerSettingsSubscriberUserIdentifier === currentUserIdentifier) {
     return
   }
 
-  const nextResponsibleEmailAddresses = managerEmailEditor.getValues()
+  if (unsubscribeFromManagerSettings) {
+    unsubscribeFromManagerSettings()
+    unsubscribeFromManagerSettings = null
+  }
+
+  managerSettingsSubscriberUserIdentifier = currentUserIdentifier
+
+  if (!activeUser) {
+    resetManagerSettingsToFallback()
+    return
+  }
+
+  unsubscribeFromManagerSettings = onSnapshot(getManagerSettingsReference(), (managerSettingsSnapshot) => {
+    if (!managerSettingsSnapshot.exists()) {
+      resetManagerSettingsToFallback()
+      return
+    }
+    applyManagerSettings(managerSettingsSnapshot.data())
+  }, (error) => {
+    elements.managerStatus.textContent = `Ошибка загрузки настроек: ${error.message}`
+  })
+}
+
+async function saveManagerSettings() {
+  if (!activeUser || !canManageVehicleNumbers(activeUser)) {
+    elements.managerStatus.textContent = 'Недостаточно прав для изменения настроек'
+    return
+  }
+
   const nextVehicleNumbers = vehicleNumberEditor.getValues()
+  if (!nextVehicleNumbers.length) {
+    elements.managerStatus.textContent = 'Добавьте хотя бы один номер машины'
+    return
+  }
+
+  const canUpdateEmailAddresses = canManageEmailAddresses(activeUser)
+  const nextResponsibleEmailAddresses = canUpdateEmailAddresses
+    ? managerEmailEditor.getValues()
+    : responsibleEmailAddresses
 
   if (!nextResponsibleEmailAddresses.length) {
     elements.managerStatus.textContent = 'Добавьте хотя бы один email ответственного'
     return
   }
 
-  if (!nextVehicleNumbers.length) {
-    elements.managerStatus.textContent = 'Добавьте хотя бы один номер машины'
-    return
-  }
-
-  await setDoc(getManagerSettingsReference(), {
+  const settingsForSaving = {
     responsibleEmails: nextResponsibleEmailAddresses,
+    responsibleEmail: nextResponsibleEmailAddresses[0],
     vehicleNumbers: nextVehicleNumbers,
     updatedAt: serverTimestamp(),
     updatedByEmail: normalizeEmail(activeUser.email)
-  })
+  }
 
-  responsibleEmailAddresses = nextResponsibleEmailAddresses
-  managedVehicleNumbers = nextVehicleNumbers
-  populateVehicleNumbers()
-  elements.managerStatus.textContent = `Сохранено: ответственных ${responsibleEmailAddresses.length}, машин ${managedVehicleNumbers.length}`
-  updateVisibilityForUser(activeUser)
-  applyFiltersAndRenderJournal()
+  if (!canUpdateEmailAddresses) {
+    delete settingsForSaving.responsibleEmails
+    delete settingsForSaving.responsibleEmail
+  }
+
+  try {
+    await setDoc(getManagerSettingsReference(), settingsForSaving, { merge: true })
+    elements.managerStatus.textContent = canUpdateEmailAddresses
+      ? `Сохранено: ответственных ${nextResponsibleEmailAddresses.length}, машин ${nextVehicleNumbers.length}`
+      : `Сохранено: машин ${nextVehicleNumbers.length}`
+  } catch (error) {
+    elements.managerStatus.textContent = `Ошибка сохранения настроек: ${error.message}`
+  }
 }
 
 function normalizeTripRecord(documentSnapshot) {
@@ -541,15 +620,36 @@ function refreshTripSubscription() {
   })
 }
 
+
+function closeAccountMenu() {
+  elements.accountMenu.classList.add('hidden')
+}
+
+function updateAccountPanel(user) {
+  elements.accountPanel.classList.toggle('hidden', !user)
+  if (!user) {
+    closeAccountMenu()
+    return
+  }
+  const emailAddress = normalizeEmail(user.email)
+  const userRole = isOwner(user) ? 'владелец' : isResponsible(user) ? 'ответственный' : 'пользователь'
+  elements.accountMenuButton.textContent = emailAddress ? `${emailAddress} (${userRole})` : `Гость (${userRole})`
+}
+
 function updateVisibilityForUser(user) {
   activeUser = user
   const ownerAccess = isOwner(user)
   const responsibleAccess = isResponsible(user)
   const journalAccess = ownerAccess || responsibleAccess
+  const managerAccess = canManageVehicleNumbers(user)
 
-  elements.logoutButton.classList.toggle('hidden', !user)
+  refreshManagerSettingsSubscription()
+  updateAccountPanel(user)
+  setManagerEditorAccess(user)
+
+  elements.authCard.classList.toggle('hidden', Boolean(user))
   elements.tripCard.classList.toggle('hidden', !user)
-  elements.managerCard.classList.toggle('hidden', !ownerAccess)
+  elements.managerCard.classList.toggle('hidden', !managerAccess)
   elements.journalCard.classList.toggle('hidden', !journalAccess)
 
   if (!user) {
@@ -564,8 +664,10 @@ function updateVisibilityForUser(user) {
   const userRole = ownerAccess ? 'владелец' : responsibleAccess ? 'ответственный' : 'пользователь'
   elements.authStatus.textContent = `Вход выполнен: ${normalizeEmail(user.email) || 'гость'} (${userRole})`
 
-  if (ownerAccess) {
-    elements.managerStatus.textContent = `Настройте список ответственных и машин`
+  if (managerAccess) {
+    elements.managerStatus.textContent = ownerAccess
+      ? 'Настройте список ответственных и машин'
+      : 'Вы можете редактировать только список машин'
   } else {
     elements.managerStatus.textContent = ''
   }
@@ -585,8 +687,8 @@ function getTripRecordFromForm() {
     driverFullName: elements.driverFullNameInput.value.trim(),
     tripDate: elements.tripDateInput.value,
     vehicleNumber: elements.vehicleNumberInput.value,
-    mileageValue: Number(elements.mileageInput.value),
-    odometerValue: Number(elements.odometerInput.value),
+    mileageValue: parseWholeNumber(elements.mileageInput.value),
+    odometerValue: parseWholeNumber(elements.odometerInput.value),
     tripDescription: elements.tripDescriptionInput.value.trim(),
     createdAt: serverTimestamp(),
     createdByUserId: activeUser.uid,
@@ -595,16 +697,19 @@ function getTripRecordFromForm() {
 }
 
 function validateTripRecord(tripRecord) {
-  return Boolean(
-    tripRecord.driverFullName
-    && tripRecord.tripDate
-    && tripRecord.vehicleNumber
-    && Number.isFinite(tripRecord.mileageValue)
-    && tripRecord.mileageValue >= 0
-    && Number.isFinite(tripRecord.odometerValue)
-    && tripRecord.odometerValue >= 0
-    && tripRecord.tripDescription
-  )
+  const hasValidDriverName = tripRecord.driverFullName.length >= 3 && tripRecord.driverFullName.length <= 120
+  const hasValidTripDate = /^\d{4}-\d{2}-\d{2}$/.test(tripRecord.tripDate)
+  const hasValidVehicleNumber = tripRecord.vehicleNumber.length >= 3 && tripRecord.vehicleNumber.length <= 20
+  const hasValidMileage = Number.isInteger(tripRecord.mileageValue) && tripRecord.mileageValue >= 0
+  const hasValidOdometer = Number.isInteger(tripRecord.odometerValue) && tripRecord.odometerValue >= 0
+  const hasValidTripDescription = tripRecord.tripDescription.length >= 3 && tripRecord.tripDescription.length <= 3000
+
+  return hasValidDriverName
+    && hasValidTripDate
+    && hasValidVehicleNumber
+    && hasValidMileage
+    && hasValidOdometer
+    && hasValidTripDescription
 }
 
 async function submitTripRecord(event) {
@@ -617,7 +722,7 @@ async function submitTripRecord(event) {
 
   const tripRecord = getTripRecordFromForm()
   if (!validateTripRecord(tripRecord)) {
-    elements.tripFormStatus.textContent = 'Заполните поля корректно'
+    elements.tripFormStatus.textContent = 'Проверьте данные: ФИО от 3 символов, целые значения пробега и одометра, текст от 3 символов'
     return
   }
 
@@ -645,6 +750,24 @@ async function loginWithEmail(event) {
   }
 }
 
+async function registerWithEmail() {
+  elements.authStatus.textContent = 'Создаётся аккаунт...'
+
+  const emailAddress = normalizeEmail(elements.emailInput.value)
+  const passwordValue = elements.passwordInput.value
+
+  if (!emailAddress || !passwordValue || passwordValue.length < 6) {
+    elements.authStatus.textContent = 'Для регистрации укажите email и пароль не короче 6 символов'
+    return
+  }
+
+  try {
+    await createUserWithEmailAndPassword(authentication, emailAddress, passwordValue)
+  } catch (error) {
+    elements.authStatus.textContent = `Ошибка регистрации: ${error.message}`
+  }
+}
+
 async function loginAsGuest() {
   elements.authStatus.textContent = 'Выполняется вход гостя...'
   try {
@@ -655,6 +778,7 @@ async function loginAsGuest() {
 }
 
 async function logoutCurrentUser() {
+  closeAccountMenu()
   try {
     await signOut(authentication)
   } catch (error) {
@@ -693,14 +817,27 @@ function registerServiceWorker() {
 function attachEventListeners() {
   elements.themeToggleButton.addEventListener('click', toggleTheme)
   elements.emailAuthForm.addEventListener('submit', loginWithEmail)
+  elements.registerButton.addEventListener('click', registerWithEmail)
   elements.guestLoginButton.addEventListener('click', loginAsGuest)
-  elements.logoutButton.addEventListener('click', logoutCurrentUser)
+  elements.accountLogoutButton.addEventListener('click', logoutCurrentUser)
   elements.saveManagerButton.addEventListener('click', saveManagerSettings)
   elements.tripForm.addEventListener('submit', submitTripRecord)
   elements.applyFilterButton.addEventListener('click', applyFiltersAndRenderJournal)
   elements.resetFilterButton.addEventListener('click', resetFilters)
   elements.sortOrderInput.addEventListener('change', applyFiltersAndRenderJournal)
   elements.exportAllButton.addEventListener('click', exportCurrentRecords)
+
+
+  elements.accountMenuButton.addEventListener('click', () => {
+    elements.accountMenu.classList.toggle('hidden')
+  })
+
+  document.addEventListener('click', (event) => {
+    const clickedInsideAccountPanel = elements.accountPanel.contains(event.target)
+    if (!clickedInsideAccountPanel) {
+      closeAccountMenu()
+    }
+  })
 
   window.addEventListener('beforeinstallprompt', (event) => {
     event.preventDefault()
@@ -724,7 +861,6 @@ async function startApplication() {
   setDefaultTripDate()
   attachEventListeners()
   onAuthStateChanged(authentication, updateVisibilityForUser)
-  await loadManagerSettings()
   updateVisibilityForUser(authentication.currentUser)
   registerServiceWorker()
 }
