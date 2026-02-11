@@ -48,6 +48,38 @@ body {
   color: var(--text-main);
 }
 
+.account-panel {
+  position: sticky;
+  top: 8px;
+  z-index: 10;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: 8px;
+  width: min(1250px, calc(100% - 24px * 2));
+  margin: 12px auto 0;
+}
+
+.account-menu-button {
+  min-height: 40px;
+}
+
+.account-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: var(--card-background);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 8px;
+  min-width: 200px;
+}
+
+.account-menu button {
+  width: 100%;
+}
+
 .page {
   max-width: 1250px;
   margin: 0 auto;
@@ -243,6 +275,15 @@ th {
 }
 
 @media (max-width: 900px) {
+  .account-panel {
+    width: calc(100% - 12px * 2);
+    margin-top: 10px;
+  }
+
+  .account-menu {
+    min-width: 180px;
+  }
+
   .page {
     padding: 12px;
     gap: 12px;
@@ -283,6 +324,17 @@ th {
 }
 
 @media (max-width: 700px) {
+  .account-panel {
+    position: sticky;
+    top: 6px;
+  }
+
+  .account-menu {
+    left: 0;
+    right: 0;
+    min-width: 0;
+  }
+
   .table-wrap {
     overflow: visible;
   }

@@ -9,6 +9,12 @@
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
+  <header class="account-panel hidden" id="accountPanel">
+    <button type="button" id="accountMenuButton" class="secondary account-menu-button"></button>
+    <div class="account-menu hidden" id="accountMenu">
+      <button type="button" id="accountLogoutButton" class="secondary">Выйти из аккаунта</button>
+    </div>
+  </header>
   <main class="page">
     <section class="card" id="authCard">
       <div class="card-header">
@@ -30,7 +36,6 @@
         <div class="row">
           <button type="submit">Войти</button>
           <button type="button" id="guestLoginButton" class="secondary">Войти как гость</button>
-          <button type="button" id="logoutButton" class="secondary hidden">Выйти</button>
         </div>
       </form>
     </section>
