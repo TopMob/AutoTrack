@@ -73,6 +73,7 @@ const elements = {
   applyFilterButton: document.getElementById('applyFilterButton'),
   resetFilterButton: document.getElementById('resetFilterButton'),
   exportAllButton: document.getElementById('exportAllButton'),
+  installAppButtonAuth: document.getElementById('installAppButtonAuth'),
   installAppButton: document.getElementById('installAppButton'),
   journalTableBody: document.getElementById('journalTableBody'),
   journalStatus: document.getElementById('journalStatus')
@@ -319,6 +320,7 @@ function applyManagerSettings(settingsData) {
   setManagerEditors()
   setManagerEditorAccess(activeUser)
   populateVehicleNumbers()
+  updateVisibilityByCurrentAccess()
 }
 
 function resetManagerSettingsToFallback() {
@@ -636,23 +638,21 @@ function updateAccountPanel(user) {
   elements.accountMenuButton.textContent = emailAddress ? `${emailAddress} (${userRole})` : `Гость (${userRole})`
 }
 
-function updateVisibilityForUser(user) {
-  activeUser = user
-  const ownerAccess = isOwner(user)
-  const responsibleAccess = isResponsible(user)
+function updateVisibilityByCurrentAccess() {
+  const ownerAccess = isOwner(activeUser)
+  const responsibleAccess = isResponsible(activeUser)
   const journalAccess = ownerAccess || responsibleAccess
-  const managerAccess = canManageVehicleNumbers(user)
+  const managerAccess = canManageVehicleNumbers(activeUser)
 
-  refreshManagerSettingsSubscription()
-  updateAccountPanel(user)
-  setManagerEditorAccess(user)
+  updateAccountPanel(activeUser)
+  setManagerEditorAccess(activeUser)
 
-  elements.authCard.classList.toggle('hidden', Boolean(user))
-  elements.tripCard.classList.toggle('hidden', !user)
+  elements.authCard.classList.toggle('hidden', Boolean(activeUser))
+  elements.tripCard.classList.toggle('hidden', !activeUser)
   elements.managerCard.classList.toggle('hidden', !managerAccess)
   elements.journalCard.classList.toggle('hidden', !journalAccess)
 
-  if (!user) {
+  if (!activeUser) {
     elements.authStatus.textContent = 'Выполните вход по email'
     elements.managerStatus.textContent = ''
     elements.journalStatus.textContent = ''
@@ -662,7 +662,7 @@ function updateVisibilityForUser(user) {
   }
 
   const userRole = ownerAccess ? 'владелец' : responsibleAccess ? 'ответственный' : 'пользователь'
-  elements.authStatus.textContent = `Вход выполнен: ${normalizeEmail(user.email) || 'гость'} (${userRole})`
+  elements.authStatus.textContent = `Вход выполнен: ${normalizeEmail(activeUser.email) || 'гость'} (${userRole})`
 
   if (managerAccess) {
     elements.managerStatus.textContent = ownerAccess
@@ -680,6 +680,12 @@ function updateVisibilityForUser(user) {
 
   refreshTripSubscription()
   applyFiltersAndRenderJournal()
+}
+
+function updateVisibilityForUser(user) {
+  activeUser = user
+  refreshManagerSettingsSubscription()
+  updateVisibilityByCurrentAccess()
 }
 
 function getTripRecordFromForm() {
@@ -805,7 +811,18 @@ function setDefaultTripDate() {
 }
 
 function setInstallButtonState() {
+  elements.installAppButtonAuth.classList.toggle('hidden', !installPromptEvent)
   elements.installAppButton.classList.toggle('hidden', !installPromptEvent)
+}
+
+async function installApplication() {
+  if (!installPromptEvent) {
+    return
+  }
+  installPromptEvent.prompt()
+  await installPromptEvent.userChoice
+  installPromptEvent = null
+  setInstallButtonState()
 }
 
 function registerServiceWorker() {
@@ -845,15 +862,8 @@ function attachEventListeners() {
     setInstallButtonState()
   })
 
-  elements.installAppButton.addEventListener('click', async () => {
-    if (!installPromptEvent) {
-      return
-    }
-    installPromptEvent.prompt()
-    await installPromptEvent.userChoice
-    installPromptEvent = null
-    setInstallButtonState()
-  })
+  elements.installAppButtonAuth.addEventListener('click', installApplication)
+  elements.installAppButton.addEventListener('click', installApplication)
 }
 
 async function startApplication() {
