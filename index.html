@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AutoTrack Журнал поездок</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#2563eb">
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
@@ -11,7 +13,7 @@
     <section class="card" id="authCard">
       <div class="card-header">
         <div>
-          <h1>AutoTrack Журнал поездок</h1>
+          <h1>Журнал поездок</h1>
           <p id="authStatus">Выполните вход по email</p>
         </div>
         <button type="button" id="themeToggleButton" class="secondary">Сменить тему</button>
@@ -27,7 +29,7 @@
         </label>
         <div class="row">
           <button type="submit">Войти</button>
-          <button type="button" id="emailRegisterButton" class="secondary">Регистрация</button>
+          <button type="button" id="guestLoginButton" class="secondary">Войти как гость</button>
           <button type="button" id="logoutButton" class="secondary hidden">Выйти</button>
         </div>
       </form>
@@ -37,10 +39,20 @@
       <h2>Назначение ответственного</h2>
       <p id="managerStatus" class="status"></p>
       <label class="field">
-        <span>Email ответственного</span>
-        <input type="email" id="managerEmailInput" required>
+        <span>Email ответственных</span>
+        <div class="tag-editor" id="managerEmailEditor">
+          <div class="tag-list" id="managerEmailList"></div>
+          <input type="email" id="managerEmailInput" placeholder="Введите email и нажмите Enter">
+        </div>
       </label>
-      <button type="button" id="saveManagerButton">Сохранить ответственного</button>
+      <label class="field">
+        <span>Список машин</span>
+        <div class="tag-editor" id="vehicleNumberEditor">
+          <div class="tag-list" id="vehicleNumberList"></div>
+          <input type="text" id="vehicleNumberManagerInput" placeholder="Введите номер и нажмите Enter">
+        </div>
+      </label>
+      <button type="button" id="saveManagerButton">Сохранить настройки</button>
     </section>
 
     <section class="card hidden" id="tripCard">
@@ -59,7 +71,11 @@
           <select id="vehicleNumberInput" required></select>
         </label>
         <label class="field">
-          <span>Пробег одометра</span>
+          <span>Пробег</span>
+          <input type="number" id="mileageInput" min="0" step="1" required>
+        </label>
+        <label class="field">
+          <span>Одометр</span>
           <input type="number" id="odometerInput" min="0" step="1" required>
         </label>
         <label class="field">
@@ -90,16 +106,18 @@
               <option value="tripDateAsc">Дата поездки: старые сверху</option>
               <option value="createdAtDesc">Дата создания: новые сверху</option>
               <option value="createdAtAsc">Дата создания: старые сверху</option>
-              <option value="odometerDesc">Пробег: по убыванию</option>
-              <option value="odometerAsc">Пробег: по возрастанию</option>
+              <option value="mileageDesc">Пробег: по убыванию</option>
+              <option value="mileageAsc">Пробег: по возрастанию</option>
+              <option value="odometerDesc">Одометр: по убыванию</option>
+              <option value="odometerAsc">Одометр: по возрастанию</option>
             </select>
           </label>
         </div>
         <div class="row">
           <button type="button" id="applyFilterButton">Применить</button>
           <button type="button" id="resetFilterButton" class="secondary">Сбросить</button>
-          <button type="button" id="exportFilteredButton" class="secondary">Экспорт фильтра</button>
-          <button type="button" id="exportAllButton" class="secondary">Скачать все</button>
+          <button type="button" id="exportAllButton" class="secondary">Скачать</button>
+          <button type="button" id="installAppButton" class="secondary hidden">Скачать приложение</button>
         </div>
       </div>
       <div class="table-wrap">
@@ -110,6 +128,7 @@
               <th>Дата поездки</th>
               <th>Номер машины</th>
               <th>Пробег</th>
+              <th>Одометр</th>
               <th>Текст поездки</th>
               <th>Дата создания</th>
               <th>Суточный пробег</th>
