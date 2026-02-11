@@ -20,13 +20,14 @@
       <div class="card-header">
         <div>
           <h1>Журнал поездок</h1>
-          <p id="authStatus">Выполните вход по email</p>
+          <p id="authStatus">Выполните вход</p>
         </div>
         <div class="row">
           <button type="button" id="installAppButtonAuth" class="secondary hidden">Установить приложение</button>
           <button type="button" id="themeToggleButton" class="secondary">Сменить тему</button>
         </div>
       </div>
+      <button type="button" id="guestLoginButton" class="primary-action">Войти как гость</button>
       <form id="emailAuthForm" class="stack">
         <label class="field">
           <span>Email</span>
@@ -36,27 +37,33 @@
           <span>Пароль</span>
           <input type="password" id="passwordInput" required>
         </label>
-        <div class="row">
-          <button type="submit">Войти</button>
+        <div class="row auth-secondary-actions">
+          <button type="submit" class="secondary">Войти по email</button>
           <button type="button" id="registerButton" class="secondary">Регистрация</button>
-          <button type="button" id="guestLoginButton" class="secondary">Войти как гость</button>
         </div>
       </form>
     </section>
 
     <section class="card hidden" id="managerCard">
-      <h2>Назначение ответственного</h2>
+      <h2>Управление доступом и машинами</h2>
       <p id="managerStatus" class="status"></p>
-      <label class="field">
+      <label class="field" id="responsibleField">
         <span>Email ответственных</span>
-        <div class="tag-editor" id="managerEmailEditor">
+        <div class="tag-editor">
           <div class="tag-list" id="managerEmailList"></div>
           <input type="email" id="managerEmailInput" placeholder="Введите email и нажмите Enter">
         </div>
       </label>
+      <label class="field" id="assistantField">
+        <span>Email помощников</span>
+        <div class="tag-editor">
+          <div class="tag-list" id="assistantEmailList"></div>
+          <input type="email" id="assistantEmailInput" placeholder="Введите email и нажмите Enter">
+        </div>
+      </label>
       <label class="field">
         <span>Список машин</span>
-        <div class="tag-editor" id="vehicleNumberEditor">
+        <div class="tag-editor">
           <div class="tag-list" id="vehicleNumberList"></div>
           <input type="text" id="vehicleNumberManagerInput" placeholder="Введите номер и нажмите Enter">
         </div>
@@ -74,6 +81,10 @@
         <label class="field">
           <span>Дата поездки</span>
           <input type="date" id="tripDateInput" required>
+        </label>
+        <label class="field">
+          <span>Поиск номера машины</span>
+          <input type="text" id="vehicleNumberSearchInput" placeholder="Введите часть номера">
         </label>
         <label class="field">
           <span>Номер машины</span>
@@ -115,6 +126,8 @@
               <option value="tripDateAsc">Дата поездки: старые сверху</option>
               <option value="createdAtDesc">Дата создания: новые сверху</option>
               <option value="createdAtAsc">Дата создания: старые сверху</option>
+              <option value="vehicleNumberDigitsAsc">Номер машины: по трём цифрам по возрастанию</option>
+              <option value="vehicleNumberDigitsDesc">Номер машины: по трём цифрам по убыванию</option>
               <option value="mileageDesc">Пробег: по убыванию</option>
               <option value="mileageAsc">Пробег: по возрастанию</option>
               <option value="odometerDesc">Одометр: по убыванию</option>
