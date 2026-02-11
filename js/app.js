@@ -2,6 +2,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/fireba
 import {
   getAuth,
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   onAuthStateChanged,
   signOut,
   signInAnonymously
@@ -43,6 +44,7 @@ const elements = {
   emailAuthForm: document.getElementById('emailAuthForm'),
   emailInput: document.getElementById('emailInput'),
   passwordInput: document.getElementById('passwordInput'),
+  registerButton: document.getElementById('registerButton'),
   guestLoginButton: document.getElementById('guestLoginButton'),
   accountPanel: document.getElementById('accountPanel'),
   accountMenuButton: document.getElementById('accountMenuButton'),
@@ -84,6 +86,7 @@ let responsibleEmailAddresses = [fallbackResponsibleEmailAddress]
 let managedVehicleNumbers = [...fallbackVehicleNumbers]
 let unsubscribeFromTripRecords = null
 let unsubscribeFromManagerSettings = null
+let managerSettingsSubscriberUserIdentifier = null
 let installPromptEvent = null
 
 function normalizeEmail(emailAddress) {
@@ -92,6 +95,11 @@ function normalizeEmail(emailAddress) {
 
 function normalizeVehicleNumber(vehicleNumber) {
   return String(vehicleNumber || '').trim().toUpperCase()
+}
+
+function parseWholeNumber(value) {
+  const parsedNumber = Number.parseInt(String(value), 10)
+  return Number.isFinite(parsedNumber) ? parsedNumber : NaN
 }
 
 function isOwner(user) {
@@ -311,24 +319,38 @@ function applyManagerSettings(settingsData) {
   setManagerEditors()
   setManagerEditorAccess(activeUser)
   populateVehicleNumbers()
-  updateVisibilityForUser(activeUser)
 }
 
-function subscribeToManagerSettings() {
+function resetManagerSettingsToFallback() {
+  applyManagerSettings({
+    responsibleEmails: [fallbackResponsibleEmailAddress],
+    vehicleNumbers: fallbackVehicleNumbers
+  })
+}
+
+function refreshManagerSettingsSubscription() {
+  const currentUserIdentifier = activeUser?.uid || null
+  if (managerSettingsSubscriberUserIdentifier === currentUserIdentifier) {
+    return
+  }
+
   if (unsubscribeFromManagerSettings) {
     unsubscribeFromManagerSettings()
     unsubscribeFromManagerSettings = null
   }
 
+  managerSettingsSubscriberUserIdentifier = currentUserIdentifier
+
+  if (!activeUser) {
+    resetManagerSettingsToFallback()
+    return
+  }
+
   unsubscribeFromManagerSettings = onSnapshot(getManagerSettingsReference(), (managerSettingsSnapshot) => {
     if (!managerSettingsSnapshot.exists()) {
-      applyManagerSettings({
-        responsibleEmails: [fallbackResponsibleEmailAddress],
-        vehicleNumbers: fallbackVehicleNumbers
-      })
+      resetManagerSettingsToFallback()
       return
     }
-
     applyManagerSettings(managerSettingsSnapshot.data())
   }, (error) => {
     elements.managerStatus.textContent = `Ошибка загрузки настроек: ${error.message}`
@@ -337,6 +359,7 @@ function subscribeToManagerSettings() {
 
 async function saveManagerSettings() {
   if (!activeUser || !canManageVehicleNumbers(activeUser)) {
+    elements.managerStatus.textContent = 'Недостаточно прав для изменения настроек'
     return
   }
 
@@ -357,20 +380,26 @@ async function saveManagerSettings() {
   }
 
   const settingsForSaving = {
+    responsibleEmails: nextResponsibleEmailAddresses,
+    responsibleEmail: nextResponsibleEmailAddresses[0],
     vehicleNumbers: nextVehicleNumbers,
     updatedAt: serverTimestamp(),
     updatedByEmail: normalizeEmail(activeUser.email)
   }
 
-  if (canUpdateEmailAddresses) {
-    settingsForSaving.responsibleEmails = nextResponsibleEmailAddresses
+  if (!canUpdateEmailAddresses) {
+    delete settingsForSaving.responsibleEmails
+    delete settingsForSaving.responsibleEmail
   }
 
-  await setDoc(getManagerSettingsReference(), settingsForSaving, { merge: true })
-
-  elements.managerStatus.textContent = canUpdateEmailAddresses
-    ? `Сохранено: ответственных ${nextResponsibleEmailAddresses.length}, машин ${nextVehicleNumbers.length}`
-    : `Сохранено: машин ${nextVehicleNumbers.length}`
+  try {
+    await setDoc(getManagerSettingsReference(), settingsForSaving, { merge: true })
+    elements.managerStatus.textContent = canUpdateEmailAddresses
+      ? `Сохранено: ответственных ${nextResponsibleEmailAddresses.length}, машин ${nextVehicleNumbers.length}`
+      : `Сохранено: машин ${nextVehicleNumbers.length}`
+  } catch (error) {
+    elements.managerStatus.textContent = `Ошибка сохранения настроек: ${error.message}`
+  }
 }
 
 function normalizeTripRecord(documentSnapshot) {
@@ -614,6 +643,7 @@ function updateVisibilityForUser(user) {
   const journalAccess = ownerAccess || responsibleAccess
   const managerAccess = canManageVehicleNumbers(user)
 
+  refreshManagerSettingsSubscription()
   updateAccountPanel(user)
   setManagerEditorAccess(user)
 
@@ -657,8 +687,8 @@ function getTripRecordFromForm() {
     driverFullName: elements.driverFullNameInput.value.trim(),
     tripDate: elements.tripDateInput.value,
     vehicleNumber: elements.vehicleNumberInput.value,
-    mileageValue: Number(elements.mileageInput.value),
-    odometerValue: Number(elements.odometerInput.value),
+    mileageValue: parseWholeNumber(elements.mileageInput.value),
+    odometerValue: parseWholeNumber(elements.odometerInput.value),
     tripDescription: elements.tripDescriptionInput.value.trim(),
     createdAt: serverTimestamp(),
     createdByUserId: activeUser.uid,
@@ -667,16 +697,19 @@ function getTripRecordFromForm() {
 }
 
 function validateTripRecord(tripRecord) {
-  return Boolean(
-    tripRecord.driverFullName
-    && tripRecord.tripDate
-    && tripRecord.vehicleNumber
-    && Number.isFinite(tripRecord.mileageValue)
-    && tripRecord.mileageValue >= 0
-    && Number.isFinite(tripRecord.odometerValue)
-    && tripRecord.odometerValue >= 0
-    && tripRecord.tripDescription
-  )
+  const hasValidDriverName = tripRecord.driverFullName.length >= 3 && tripRecord.driverFullName.length <= 120
+  const hasValidTripDate = /^\d{4}-\d{2}-\d{2}$/.test(tripRecord.tripDate)
+  const hasValidVehicleNumber = tripRecord.vehicleNumber.length >= 3 && tripRecord.vehicleNumber.length <= 20
+  const hasValidMileage = Number.isInteger(tripRecord.mileageValue) && tripRecord.mileageValue >= 0
+  const hasValidOdometer = Number.isInteger(tripRecord.odometerValue) && tripRecord.odometerValue >= 0
+  const hasValidTripDescription = tripRecord.tripDescription.length >= 3 && tripRecord.tripDescription.length <= 3000
+
+  return hasValidDriverName
+    && hasValidTripDate
+    && hasValidVehicleNumber
+    && hasValidMileage
+    && hasValidOdometer
+    && hasValidTripDescription
 }
 
 async function submitTripRecord(event) {
@@ -689,7 +722,7 @@ async function submitTripRecord(event) {
 
   const tripRecord = getTripRecordFromForm()
   if (!validateTripRecord(tripRecord)) {
-    elements.tripFormStatus.textContent = 'Заполните поля корректно'
+    elements.tripFormStatus.textContent = 'Проверьте данные: ФИО от 3 символов, целые значения пробега и одометра, текст от 3 символов'
     return
   }
 
@@ -714,6 +747,24 @@ async function loginWithEmail(event) {
     await signInWithEmailAndPassword(authentication, emailAddress, passwordValue)
   } catch (error) {
     elements.authStatus.textContent = `Ошибка входа: ${error.message}`
+  }
+}
+
+async function registerWithEmail() {
+  elements.authStatus.textContent = 'Создаётся аккаунт...'
+
+  const emailAddress = normalizeEmail(elements.emailInput.value)
+  const passwordValue = elements.passwordInput.value
+
+  if (!emailAddress || !passwordValue || passwordValue.length < 6) {
+    elements.authStatus.textContent = 'Для регистрации укажите email и пароль не короче 6 символов'
+    return
+  }
+
+  try {
+    await createUserWithEmailAndPassword(authentication, emailAddress, passwordValue)
+  } catch (error) {
+    elements.authStatus.textContent = `Ошибка регистрации: ${error.message}`
   }
 }
 
@@ -766,6 +817,7 @@ function registerServiceWorker() {
 function attachEventListeners() {
   elements.themeToggleButton.addEventListener('click', toggleTheme)
   elements.emailAuthForm.addEventListener('submit', loginWithEmail)
+  elements.registerButton.addEventListener('click', registerWithEmail)
   elements.guestLoginButton.addEventListener('click', loginAsGuest)
   elements.accountLogoutButton.addEventListener('click', logoutCurrentUser)
   elements.saveManagerButton.addEventListener('click', saveManagerSettings)
@@ -808,7 +860,6 @@ async function startApplication() {
   initializeTheme()
   setDefaultTripDate()
   attachEventListeners()
-  subscribeToManagerSettings()
   onAuthStateChanged(authentication, updateVisibilityForUser)
   updateVisibilityForUser(authentication.currentUser)
   registerServiceWorker()

@@ -97,6 +97,18 @@ body {
   backdrop-filter: blur(8px);
 }
 
+
+.auth-card {
+  width: min(100%, 520px);
+  justify-self: center;
+}
+
+#managerCard,
+#tripCard,
+#journalCard {
+  width: 100%;
+}
+
 .card-header {
   display: flex;
   align-items: start;
@@ -287,6 +299,11 @@ th {
   .page {
     padding: 12px;
     gap: 12px;
+  }
+
+  .auth-card {
+    width: 100%;
+    justify-self: stretch;
   }
 
   .card {
