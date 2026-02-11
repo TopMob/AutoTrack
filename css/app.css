@@ -109,6 +109,33 @@ body {
   width: 100%;
 }
 
+
+.primary-action {
+  width: 100%;
+  min-height: 46px;
+  margin: 6px 0 12px;
+}
+
+.auth-secondary-actions {
+  justify-content: flex-end;
+}
+
+#vehicleNumberInput {
+  min-height: 44px;
+}
+
+@media (min-width: 1000px) {
+  .page {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .auth-card,
+  #journalCard {
+    grid-column: 1 / -1;
+  }
+}
+
 .card-header {
   display: flex;
   align-items: start;
