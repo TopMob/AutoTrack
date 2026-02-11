@@ -156,7 +156,7 @@ function canManageVehicleNumbers(user) {
 }
 
 function canCreateTripRecords(user) {
-  return isOwner(user) || isResponsible(user)
+  return Boolean(user)
 }
 
 function convertDateValueToIsoDateString(dateValue) {
@@ -458,11 +458,6 @@ async function saveManagerSettings() {
 
   if (canUpdateResponsibleEmails && !nextResponsibleEmailAddresses.length) {
     elements.managerStatus.textContent = 'Добавьте хотя бы один email ответственного'
-    return
-  }
-
-  if (canUpdateAssistantEmails && !nextAssistantEmailAddresses.includes(normalizedActiveUserEmail)) {
-    elements.managerStatus.textContent = 'Ответственный не может удалить себя из помощников'
     return
   }
 
