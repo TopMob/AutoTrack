@@ -1,11 +1,11 @@
 {
-  "name": "SmartNotes",
-  "short_name": "SmartNotes",
-  "description": "Modern web app for note taking with cloud sync, themes and collaboration",
+  "name": "Журнал поездок",
+  "short_name": "Поездки",
+  "description": "Журнал поездок AutoTrack",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#111111",
-  "theme_color": "#111111",
+  "background_color": "#0b1220",
+  "theme_color": "#2563eb",
   "icons": [
     {
       "src": "Logo.png",

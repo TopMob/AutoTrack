@@ -121,6 +121,17 @@ select {
   padding: 10px 12px;
   background: var(--field-background);
   color: var(--text-main);
+  width: 100%;
+}
+
+input[type='number'] {
+  appearance: textfield;
+}
+
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 textarea {
@@ -150,6 +161,51 @@ button.secondary:hover {
   background: var(--secondary-hover);
 }
 
+.tag-editor {
+  border: 1px solid var(--field-border);
+  border-radius: 10px;
+  background: var(--field-background);
+  padding: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--table-header);
+  color: var(--text-main);
+}
+
+.tag-remove-button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.tag-remove-button:hover {
+  background: var(--secondary-hover);
+}
+
+.tag-editor input {
+  border: 1px solid var(--field-border);
+}
+
 .hidden {
   display: none;
 }
@@ -168,7 +224,7 @@ button.secondary:hover {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 980px;
+  min-width: 1100px;
   background: var(--field-background);
   border-radius: 10px;
   overflow: hidden;
@@ -188,12 +244,13 @@ th {
 
 @media (max-width: 900px) {
   .page {
-    padding: 14px;
+    padding: 12px;
+    gap: 12px;
   }
 
   .card {
-    padding: 14px;
-    border-radius: 14px;
+    padding: 12px;
+    border-radius: 12px;
   }
 
   .card-header {
@@ -215,6 +272,13 @@ th {
   .row button {
     width: 100%;
     min-height: 44px;
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    font-size: 16px;
   }
 }
 
