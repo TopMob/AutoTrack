@@ -70,6 +70,7 @@ const elements = {
   mileageInput: document.getElementById('mileageInput'),
   odometerInput: document.getElementById('odometerInput'),
   tripDescriptionInput: document.getElementById('tripDescriptionInput'),
+  tripAccessHint: document.getElementById('tripAccessHint'),
   tripFormStatus: document.getElementById('tripFormStatus'),
   journalCard: document.getElementById('journalCard'),
   dateFromInput: document.getElementById('dateFromInput'),
@@ -274,6 +275,9 @@ function createTagEditor(inputElement, listElement, normalizer, validator) {
       inputElement.disabled = !isEditable
       render()
     },
+    commitPendingInput() {
+      addFromInput()
+    },
     getValues() {
       return [...values]
     }
@@ -423,7 +427,10 @@ function refreshManagerSettingsSubscription() {
     }
     applyManagerSettings(managerSettingsSnapshot.data())
   }, (error) => {
-    elements.managerStatus.textContent = `Ошибка загрузки настроек: ${error.message}`
+    resetManagerSettingsToFallback()
+    if (canManageVehicleNumbers(activeUser)) {
+      elements.managerStatus.textContent = `Ошибка загрузки настроек: ${error.message}`
+    }
   })
 }
 
@@ -486,6 +493,10 @@ async function saveManagerSettings() {
     }
     elements.managerStatus.textContent = `Сохранено: машин ${nextVehicleNumbers.length}`
   } catch (error) {
+    if (error?.code === 'permission-denied') {
+      elements.managerStatus.textContent = 'Ошибка сохранения настроек: нет доступа в Firestore Rules для assistantEmails или updatedByEmail'
+      return
+    }
     elements.managerStatus.textContent = `Ошибка сохранения настроек: ${error.message}`
   }
 }
@@ -735,6 +746,7 @@ function updateVisibilityByCurrentAccess() {
     elements.authStatus.textContent = 'Выполните вход'
     elements.managerStatus.textContent = ''
     elements.journalStatus.textContent = ''
+    elements.tripAccessHint.textContent = ''
     elements.journalTableBody.innerHTML = ''
     refreshTripSubscription()
     return
@@ -749,6 +761,7 @@ function updateVisibilityByCurrentAccess() {
     elements.managerStatus.textContent = 'Вы назначаете помощников и управляете списком машин'
   } else {
     elements.managerStatus.textContent = ''
+    elements.tripAccessHint.textContent = 'Гостевой режим: доступна форма отправки записи'
   }
 
   if (!journalAccess) {
@@ -967,6 +980,7 @@ function attachEventListeners() {
 async function startApplication() {
   initializeTheme()
   setDefaultTripDate()
+  populateVehicleNumbers()
   attachEventListeners()
   onAuthStateChanged(authentication, updateVisibilityForUser)
   updateVisibilityForUser(authentication.currentUser)

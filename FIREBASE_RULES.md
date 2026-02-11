@@ -34,6 +34,12 @@ service cloud.firestore {
           : ['responsible@autotrack.local'];
     }
 
+    function getAssistantEmailsFromSettings() {
+      return managerSettingsData().assistantEmails is list
+        ? managerSettingsData().assistantEmails
+        : [];
+    }
+
     function isOwner() {
       return isSignedIn() && request.auth.token.email == normalizedOwnerEmail();
     }
@@ -42,8 +48,12 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.email in getResponsibleEmailsFromSettings();
     }
 
+    function isAssistant() {
+      return isSignedIn() && request.auth.token.email in getAssistantEmailsFromSettings();
+    }
+
     function canReadJournal() {
-      return isOwner() || isResponsible();
+      return isOwner() || isResponsible() || isAssistant();
     }
 
     function isNonEmptyString(value, minSize, maxSize) {
@@ -99,10 +109,19 @@ service cloud.firestore {
       );
     }
 
+    function hasValidAssistantEmailsField() {
+      return !('assistantEmails' in request.resource.data)
+      || (
+        request.resource.data.assistantEmails is list
+        && request.resource.data.assistantEmails.size() <= 60
+      );
+    }
+
     function hasOnlyAllowedManagerSettingsKeys() {
       return request.resource.data.keys().hasOnly([
         'responsibleEmails',
         'responsibleEmail',
+        'assistantEmails',
         'vehicleNumbers',
         'updatedAt',
         'updatedByEmail'
@@ -119,15 +138,17 @@ service cloud.firestore {
       && hasValidManagerMetadata()
       && hasValidResponsibleEmailsField()
       && hasValidResponsibleEmailField()
+      && hasValidAssistantEmailsField()
       && hasValidVehicleNumbersField();
     }
 
     function isValidManagerSettingsWriteByResponsible() {
       return hasOnlyAllowedManagerSettingsKeys()
       && hasValidManagerMetadata()
+      && hasValidAssistantEmailsField()
       && hasValidVehicleNumbersField()
       && request.resource.data.vehicleNumbers is list
-      && request.resource.data.updatedByEmail == request.auth.token.email
+      && request.resource.data.updatedByEmail is string
       && request.resource.data.responsibleEmails == resource.data.responsibleEmails
       && request.resource.data.responsibleEmail == resource.data.responsibleEmail;
     }
