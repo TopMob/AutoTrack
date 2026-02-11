@@ -275,6 +275,9 @@ function createTagEditor(inputElement, listElement, normalizer, validator) {
       inputElement.disabled = !isEditable
       render()
     },
+    commitPendingInput() {
+      addFromInput()
+    },
     getValues() {
       return [...values]
     }
@@ -450,6 +453,9 @@ async function saveManagerSettings() {
   }
 
   const normalizedActiveUserEmail = normalizeEmail(activeUser.email)
+  managerEmailEditor.commitPendingInput()
+  assistantEmailEditor.commitPendingInput()
+  vehicleNumberEditor.commitPendingInput()
   const nextVehicleNumbers = getSortedVehicleNumbers(vehicleNumberEditor.getValues())
   if (!nextVehicleNumbers.length) {
     elements.managerStatus.textContent = 'Добавьте хотя бы один номер машины'
