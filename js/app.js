@@ -504,6 +504,10 @@ async function saveManagerSettings() {
     }
     elements.managerStatus.textContent = `Сохранено: машин ${nextVehicleNumbers.length}`
   } catch (error) {
+    if (error?.code === 'permission-denied') {
+      elements.managerStatus.textContent = 'Ошибка сохранения настроек: обновите Firestore Rules для поля assistantEmails'
+      return
+    }
     elements.managerStatus.textContent = `Ошибка сохранения настроек: ${error.message}`
   }
 }
