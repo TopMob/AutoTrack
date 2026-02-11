@@ -453,6 +453,7 @@ async function saveManagerSettings() {
   }
 
   const normalizedActiveUserEmail = normalizeEmail(activeUser.email)
+  const metadataUpdatedByEmail = String(activeUser.email || '').trim()
   managerEmailEditor.commitPendingInput()
   assistantEmailEditor.commitPendingInput()
   vehicleNumberEditor.commitPendingInput()
@@ -480,7 +481,7 @@ async function saveManagerSettings() {
   const settingsForSaving = {
     vehicleNumbers: nextVehicleNumbers,
     updatedAt: serverTimestamp(),
-    updatedByEmail: normalizedActiveUserEmail
+    updatedByEmail: metadataUpdatedByEmail
   }
 
   if (canUpdateResponsibleEmails) {
@@ -505,7 +506,7 @@ async function saveManagerSettings() {
     elements.managerStatus.textContent = `Сохранено: машин ${nextVehicleNumbers.length}`
   } catch (error) {
     if (error?.code === 'permission-denied') {
-      elements.managerStatus.textContent = 'Ошибка сохранения настроек: обновите Firestore Rules для поля assistantEmails'
+      elements.managerStatus.textContent = 'Ошибка сохранения настроек: нет доступа в Firestore Rules для assistantEmails или updatedByEmail'
       return
     }
     elements.managerStatus.textContent = `Ошибка сохранения настроек: ${error.message}`

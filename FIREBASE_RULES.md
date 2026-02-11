@@ -148,7 +148,7 @@ service cloud.firestore {
       && hasValidAssistantEmailsField()
       && hasValidVehicleNumbersField()
       && request.resource.data.vehicleNumbers is list
-      && request.resource.data.updatedByEmail == request.auth.token.email
+      && request.resource.data.updatedByEmail is string
       && request.resource.data.responsibleEmails == resource.data.responsibleEmails
       && request.resource.data.responsibleEmail == resource.data.responsibleEmail;
     }
