@@ -470,10 +470,6 @@ async function saveManagerSettings() {
     return
   }
 
-  if (canUpdateAssistantEmails && !nextAssistantEmailAddresses.includes(normalizedActiveUserEmail)) {
-    elements.managerStatus.textContent = 'Ответственный не может удалить себя из помощников'
-    return
-  }
 
   const settingsForSaving = {
     vehicleNumbers: nextVehicleNumbers,
