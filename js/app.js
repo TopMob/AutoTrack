@@ -84,7 +84,7 @@ const elements = {
   journalStatus: document.getElementById('journalStatus')
 }
 
-const journalColumnTitles = ['ФИО', 'Дата поездки', 'Номер машины', 'Пробег', 'Одометр', 'Текст поездки', 'Дата создания', 'Суточный пробег', 'Одометр на конец дня']
+const journalColumnTitles = ['ФИО', 'Дата поездки', 'Номер машины', 'Пробег', 'Одометр', 'Текст поездки', 'Дата создания']
 
 let activeUser = null
 let allTripRecords = []
@@ -506,38 +506,6 @@ function normalizeTripRecord(documentSnapshot) {
   }
 }
 
-function buildTripMetricsByRecordId(records) {
-  const recordsByDateAndVehicle = new Map()
-
-  records.forEach((record) => {
-    const groupKey = `${record.tripDate}|${record.vehicleNumber}`
-    const groupItems = recordsByDateAndVehicle.get(groupKey) || []
-    groupItems.push(record)
-    recordsByDateAndVehicle.set(groupKey, groupItems)
-  })
-
-  const metricsByRecordId = new Map()
-
-  recordsByDateAndVehicle.forEach((groupItems) => {
-    const odometerValues = groupItems
-      .map((record) => Number(record.odometerValue))
-      .filter((value) => Number.isFinite(value))
-
-    const endOfDayOdometer = odometerValues.length ? Math.max(...odometerValues) : 0
-    const startOfDayOdometer = odometerValues.length ? Math.min(...odometerValues) : 0
-    const dailyMileage = Math.max(endOfDayOdometer - startOfDayOdometer, 0)
-
-    groupItems.forEach((record) => {
-      metricsByRecordId.set(record.id, {
-        dailyMileage,
-        endOfDayOdometer
-      })
-    })
-  })
-
-  return metricsByRecordId
-}
-
 function filterRecordsByDateRange(records, fromDate, toDate) {
   return records.filter((record) => {
     if (!record.tripDate) {
@@ -612,11 +580,9 @@ function renderJournal(records) {
     return
   }
 
-  const metricsByRecordId = buildTripMetricsByRecordId(records)
   const rowFragment = document.createDocumentFragment()
 
   records.forEach((record) => {
-    const metrics = metricsByRecordId.get(record.id) || { dailyMileage: 0, endOfDayOdometer: 0 }
     const rowValues = [
       record.driverFullName,
       record.tripDate,
@@ -624,9 +590,7 @@ function renderJournal(records) {
       String(record.mileageValue),
       String(record.odometerValue),
       record.tripDescription,
-      convertTimestampToText(record.createdAt),
-      String(metrics.dailyMileage),
-      String(metrics.endOfDayOdometer)
+      convertTimestampToText(record.createdAt)
     ]
 
     const rowElement = document.createElement('tr')
@@ -652,9 +616,7 @@ function applyFiltersAndRenderJournal() {
 }
 
 function createCsvContent(records) {
-  const metricsByRecordId = buildTripMetricsByRecordId(records)
   const rows = records.map((record) => {
-    const metrics = metricsByRecordId.get(record.id) || { dailyMileage: 0, endOfDayOdometer: 0 }
     return [
       record.driverFullName,
       record.tripDate,
@@ -662,9 +624,7 @@ function createCsvContent(records) {
       String(record.mileageValue),
       String(record.odometerValue),
       record.tripDescription,
-      convertTimestampToText(record.createdAt),
-      String(metrics.dailyMileage),
-      String(metrics.endOfDayOdometer)
+      convertTimestampToText(record.createdAt)
     ]
   })
 
