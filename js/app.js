@@ -18,13 +18,13 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js'
 
 const firebaseConfiguration = {
-  apiKey: 'AIzaSyA-wqdvLVBIhHfdMTjRdObSAGrbJFhHoEo',
-  authDomain: 'autotrack-a6dff.firebaseapp.com',
-  projectId: 'autotrack-a6dff',
-  storageBucket: 'autotrack-a6dff.firebasestorage.app',
-  messagingSenderId: '448195063700',
-  appId: '1:448195063700:web:e9215305235ed2a7512981',
-  measurementId: 'G-KHDYP2KJJ2'
+  apiKey: 'AIzaSyBHNAoWoxfV4Eyc1vKO_6ZaY7otxNa7rJA',
+  authDomain: 'autotrack-2112.firebaseapp.com',
+  projectId: 'autotrack-2112',
+  storageBucket: 'autotrack-2112.firebasestorage.app',
+  messagingSenderId: '956840493468',
+  appId: '1:956840493468:web:3242c81dde85b873380859',
+  measurementId: 'G-Z9X89L5VG5'
 }
 
 const ownerEmailAddress = 'shazak6430@gmail.com'
