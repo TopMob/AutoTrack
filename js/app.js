@@ -156,7 +156,7 @@ function canManageVehicleNumbers(user) {
 }
 
 function canCreateTripRecords(user) {
-  return Boolean(user)
+  return isOwner(user) || isResponsible(user)
 }
 
 function convertDateValueToIsoDateString(dateValue) {
@@ -349,18 +349,6 @@ function populateVehicleNumbers() {
   elements.vehicleNumberInput.innerHTML = ''
   elements.vehicleNumberInput.append(optionsFragment)
 
-  if (!filteredVehicleNumbers.length) {
-    const emptyOptionElement = document.createElement('option')
-    emptyOptionElement.value = ''
-    emptyOptionElement.textContent = 'Нет подходящего номера'
-    elements.vehicleNumberInput.append(emptyOptionElement)
-    elements.vehicleNumberInput.value = ''
-    elements.vehicleNumberInput.disabled = true
-    return
-  }
-
-  elements.vehicleNumberInput.disabled = false
-
   if (filteredVehicleNumbers.includes(selectedVehicleNumber)) {
     elements.vehicleNumberInput.value = selectedVehicleNumber
   }
@@ -453,10 +441,6 @@ async function saveManagerSettings() {
   }
 
   const normalizedActiveUserEmail = normalizeEmail(activeUser.email)
-  const metadataUpdatedByEmail = String(activeUser.email || '').trim()
-  managerEmailEditor.commitPendingInput()
-  assistantEmailEditor.commitPendingInput()
-  vehicleNumberEditor.commitPendingInput()
   const nextVehicleNumbers = getSortedVehicleNumbers(vehicleNumberEditor.getValues())
   if (!nextVehicleNumbers.length) {
     elements.managerStatus.textContent = 'Добавьте хотя бы один номер машины'
@@ -477,11 +461,15 @@ async function saveManagerSettings() {
     return
   }
 
+  if (canUpdateAssistantEmails && !nextAssistantEmailAddresses.includes(normalizedActiveUserEmail)) {
+    elements.managerStatus.textContent = 'Ответственный не может удалить себя из помощников'
+    return
+  }
 
   const settingsForSaving = {
     vehicleNumbers: nextVehicleNumbers,
     updatedAt: serverTimestamp(),
-    updatedByEmail: metadataUpdatedByEmail
+    updatedByEmail: normalizedActiveUserEmail
   }
 
   if (canUpdateResponsibleEmails) {
@@ -769,13 +757,8 @@ function updateVisibilityByCurrentAccess() {
 
   if (ownerAccess) {
     elements.managerStatus.textContent = 'Вы назначаете ответственных и управляете списком машин'
-    elements.tripAccessHint.textContent = 'Вы можете отправлять записи и управлять доступом'
   } else if (responsibleAccess) {
     elements.managerStatus.textContent = 'Вы назначаете помощников и управляете списком машин'
-    elements.tripAccessHint.textContent = 'Вы можете отправлять записи, назначать помощников и менять список машин'
-  } else if (assistantAccess) {
-    elements.managerStatus.textContent = ''
-    elements.tripAccessHint.textContent = 'Вы можете отправлять записи, фильтровать журнал и скачивать таблицу'
   } else {
     elements.managerStatus.textContent = ''
     elements.tripAccessHint.textContent = 'Гостевой режим: доступна форма отправки записи'
