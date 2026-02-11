@@ -155,7 +155,7 @@ function canManageVehicleNumbers(user) {
 }
 
 function canCreateTripRecords(user) {
-  return Boolean(user)
+  return isOwner(user) || isResponsible(user)
 }
 
 function convertDateValueToIsoDateString(dateValue) {
